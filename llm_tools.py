@@ -106,3 +106,15 @@ def get_tenali_puzzle(topic: str) -> str:
         "Logic": "If a cat in Madurai has 3 kittens, and each kitten has 2 spots, how many spots in total in the village?"
     }
     return puzzles.get(topic, "Tell a story about Thirukkural 1 (Agaram Muthala).")
+
+@tool(name="safe_web_search", description="Search the web for real-time info.")
+def safe_web_search(query: str) -> str:
+    try:
+        from ddgs import DDGS
+        results = DDGS().text(query, max_results=3)
+        res_list = list(results)
+        if not res_list:
+            return "No results found."
+        return json.dumps(res_list)
+    except Exception as e:
+        return f"Search failed: {e}. Try a broader query."

@@ -1134,11 +1134,11 @@ function initChatElements() {
     chatElems.minimize.addEventListener('click', toggleChat);
     if (chatElems.expand) chatElems.expand.addEventListener('click', toggleFullscreen);
     chatElems.send.addEventListener('click', sendChatMessage);
-    
+
     // Bind the two different mic buttons
     if (chatElems.micSTT) chatElems.micSTT.addEventListener('click', () => toggleRecording('stt'));
     if (chatElems.micLive) chatElems.micLive.addEventListener('click', () => toggleRecording('live'));
-    
+
     chatElems.input.addEventListener('keypress', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -1531,11 +1531,11 @@ async function toggleRecording(mode) {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             mediaRecorder = new MediaRecorder(stream);
             audioChunks = [];
-            
+
             mediaRecorder.ondataavailable = e => {
                 if (e.data.size > 0) audioChunks.push(e.data);
             };
-            
+
             // Determine behavior when recording stops based on mode
             mediaRecorder.onstop = () => {
                 if (mode === 'stt') {
@@ -1549,7 +1549,7 @@ async function toggleRecording(mode) {
 
             mediaRecorder.start();
             recordingMode = mode;
-            
+
             // Update UI based on mode
             if (mode === 'stt') {
                 chatElems.micSTT.classList.add('recording-pulse-stt');
@@ -1596,7 +1596,7 @@ async function processSttAudio() {
         });
 
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        
+
         const data = await response.json();
         if (data.transcript && data.transcript.trim() !== "") {
             chatElems.input.value = data.transcript;
