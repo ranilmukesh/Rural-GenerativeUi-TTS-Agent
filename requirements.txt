@@ -26,4 +26,5 @@ sqlalchemy
 pytz
 sarvamai
 PyPDF2
+ddgs
 duckduckgo-search

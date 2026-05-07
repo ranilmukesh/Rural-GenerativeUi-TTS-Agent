@@ -97,7 +97,7 @@ echo.
 echo [5/6] Starting API Server on http://127.0.0.1:8000 ...
 start "PlacementPredictor+ API" cmd /k "title PlacementPredictor+ API Server && color 0B && set NVIDIA_API_KEY=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 && set SARVAM_API_KEY=sk_uzv5f6nd_5Zmr6AmTRsOyzQTFlaQebqZd && python -m uvicorn main:app --host 127.0.0.1 --port 8000"
 echo       Waiting for API to start...
-timeout /t 8 /nobreak >nul
+timeout /t 30 /nobreak >nul
 
 :: Validate the model loaded correctly by hitting /health
 echo       Validating model artifacts...
@@ -120,7 +120,7 @@ if errorlevel 1 (
     echo.
     echo [5/6] Restarting API Server...
     start "PlacementPredictor+ API" cmd /k "title PlacementPredictor+ API Server && color 0B && set NVIDIA_API_KEY=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 && python -m uvicorn main:app --host 127.0.0.1 --port 8000"
-    timeout /t 8 /nobreak >nul
+    timeout /t 80 /nobreak >nul
 )
 echo       API Server started!
 echo.

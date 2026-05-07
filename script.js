@@ -1126,16 +1126,19 @@ function initChatElements() {
         status: document.getElementById('chatStatus'),
         iconOpen: document.querySelector('.chat-icon-open'),
         iconClose: document.querySelector('.chat-icon-close'),
-        mic: document.getElementById('chatMic'),
+        micSTT: document.getElementById('chatMicSTT'),
+        micLive: document.getElementById('chatMicLive')
     };
 
     chatElems.toggle.addEventListener('click', toggleChat);
     chatElems.minimize.addEventListener('click', toggleChat);
     if (chatElems.expand) chatElems.expand.addEventListener('click', toggleFullscreen);
     chatElems.send.addEventListener('click', sendChatMessage);
-    if (chatElems.mic) {
-        chatElems.mic.addEventListener('click', toggleRecording);
-    }
+    
+    // Bind the two different mic buttons
+    if (chatElems.micSTT) chatElems.micSTT.addEventListener('click', () => toggleRecording('stt'));
+    if (chatElems.micLive) chatElems.micLive.addEventListener('click', () => toggleRecording('live'));
+    
     chatElems.input.addEventListener('keypress', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -1510,46 +1513,110 @@ function formatChatMarkdown(text) {
         .replace(/\n/g, '<br>');
 }
 
+// === Recording State Management ===
 let mediaRecorder;
 let audioChunks = [];
-let isRecording = false;
+let recordingMode = null; // 'stt' or 'live'
 
-async function toggleRecording() {
-    if (!isRecording) {
+async function toggleRecording(mode) {
+    // If already recording in a different mode, stop it first
+    if (recordingMode && recordingMode !== mode) {
+        mediaRecorder.stop();
+        return;
+    }
+
+    if (!recordingMode) {
+        // START RECORDING
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             mediaRecorder = new MediaRecorder(stream);
+            audioChunks = [];
+            
             mediaRecorder.ondataavailable = e => {
                 if (e.data.size > 0) audioChunks.push(e.data);
             };
-            mediaRecorder.onstop = sendAudioMessage;
+            
+            // Determine behavior when recording stops based on mode
+            mediaRecorder.onstop = () => {
+                if (mode === 'stt') {
+                    processSttAudio();
+                } else if (mode === 'live') {
+                    processLiveAudio();
+                }
+                recordingMode = null;
+                resetMicUI();
+            };
+
             mediaRecorder.start();
-            isRecording = true;
-            chatElems.mic.classList.add('recording-pulse');
-            chatElems.input.placeholder = "🎙️ Paati is listening... (Click mic to stop)";
+            recordingMode = mode;
+            
+            // Update UI based on mode
+            if (mode === 'stt') {
+                chatElems.micSTT.classList.add('recording-pulse-stt');
+                chatElems.micLive.disabled = true;
+                chatElems.input.placeholder = "Listening... (Click mic to stop)";
+            } else {
+                chatElems.micLive.classList.add('recording-pulse-live');
+                chatElems.micSTT.disabled = true;
+                chatElems.input.placeholder = "🎙️ Live Conversation... (Click wave to stop)";
+            }
             chatElems.input.disabled = true;
+
         } catch (err) {
             console.error("Microphone access denied", err);
             addChatMessage('system', '⚠️ Microphone access denied. Please allow permissions.');
+            recordingMode = null;
         }
     } else {
+        // STOP RECORDING
         mediaRecorder.stop();
-        isRecording = false;
-        chatElems.mic.classList.remove('recording-pulse');
-        chatElems.input.placeholder = "Reply to Paati...";
-        chatElems.input.disabled = false;
     }
 }
 
-async function sendAudioMessage() {
-    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-    audioChunks = [];
+function resetMicUI() {
+    chatElems.micSTT.classList.remove('recording-pulse-stt');
+    chatElems.micLive.classList.remove('recording-pulse-live');
+    chatElems.micSTT.disabled = false;
+    chatElems.micLive.disabled = false;
+    chatElems.input.placeholder = "Reply to Paati...";
+    chatElems.input.disabled = false;
+}
 
-    addTypingIndicator();
+async function processSttAudio() {
+    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
     setChatStatus('Transcribing...');
 
     const formData = new FormData();
-    formData.append("audio_file", audioBlob, "voice_note.webm");
+    formData.append("audio_file", audioBlob, "stt_note.webm");
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/chat/transcribe`, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        const data = await response.json();
+        if (data.transcript && data.transcript.trim() !== "") {
+            chatElems.input.value = data.transcript;
+            chatElems.send.disabled = false;
+        }
+        setChatStatus('Online');
+    } catch (error) {
+        console.error('STT error:', error);
+        setChatStatus('Online');
+        // showNotification("Failed to transcribe audio. Try again.", "error"); 
+    }
+}
+
+async function processLiveAudio() {
+    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+    addTypingIndicator();
+    setChatStatus('Listening & Thinking...');
+
+    const formData = new FormData();
+    formData.append("audio_file", audioBlob, "live_voice.webm");
     formData.append("session_id", chatSessionId);
 
     try {
@@ -1566,7 +1633,6 @@ async function sendAudioMessage() {
         addChatMessage('user', `🎤 <i>${data.transcript}</i>`);
         addChatMessage('ai', data.response);
 
-        // PLAY TTS AUDIO IF RECEIVED
         if (data.audio_base64) playAudioBase64(data.audio_base64);
 
         if (data.points_update) {
@@ -1576,9 +1642,9 @@ async function sendAudioMessage() {
         setChatStatus('Online');
 
     } catch (error) {
-        console.error('Audio Chat error:', error);
+        console.error('Live Chat error:', error);
         removeTypingIndicator();
-        addChatMessage('system', '⚠️ Failed to send voice message. Try typing instead.');
+        addChatMessage('system', '⚠️ Failed to send live message. Try typing instead.');
         setChatStatus('Online');
     }
 }

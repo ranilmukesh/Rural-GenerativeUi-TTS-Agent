@@ -493,6 +493,32 @@ async def upload_resume(file: UploadFile = File(...)):
         logger.error(f"Resume parsing error: {e}")
         return {"status": "error", "resume_text": ""}
 
+@app.post("/chat/transcribe")
+async def chat_transcribe(audio_file: UploadFile = File(...)):
+    """Only transcribes audio to text (STT) without triggering LLM/TTS"""
+    if not CHAT_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Chat not available")
+        
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp:
+        tmp.write(await audio_file.read())
+        tmp_path = tmp.name
+
+    try:
+        stt = get_sarvam_service()
+        result = stt.transcribe_sync(Path(tmp_path), language_code="ta-IN")
+        transcript = result.transcript
+
+        if not transcript or transcript.strip() == "":
+            return {"transcript": ""}
+
+        return {"transcript": transcript}
+    except Exception as e:
+        logger.error(f"Transcription error: {e}")
+        return {"transcript": ""}
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
 @app.post("/chat/audio")
 async def chat_audio(session_id: str = Form(...), audio_file: UploadFile = File(...)):
     if not CHAT_AVAILABLE:
