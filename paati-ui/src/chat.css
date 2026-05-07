@@ -1,0 +1,30 @@
+/* Chat message styles */
+.chat-msg { display: flex; }
+.chat-msg-user { justify-content: flex-end; }
+.chat-msg-ai { justify-content: flex-start; }
+.chat-msg-system { justify-content: center; }
+
+.chat-msg-user .chat-bubble {
+  background: var(--black);
+  color: var(--cream);
+  padding: 10px 14px;
+  border-radius: 18px 18px 4px 18px;
+  max-width: 80%;
+}
+
+.chat-msg-ai .chat-bubble {
+  background: var(--gray-100);
+  color: var(--black);
+  padding: 10px 14px;
+  border-radius: 18px 18px 18px 4px;
+  max-width: 85%;
+}
+
+.chat-msg-system .chat-bubble {
+  background: rgba(211,84,0,0.1);
+  color: var(--accent-coral);
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  text-align: center;
+}
