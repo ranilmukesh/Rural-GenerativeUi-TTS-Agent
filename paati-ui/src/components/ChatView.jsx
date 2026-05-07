@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+// onBack prop: called when user clicks "← Results"
 import { Mic, ArrowRight, ThumbsUp, ThumbsDown, Copy, MoreHorizontal, Sparkles } from 'lucide-react';
 import { apiChatStart, apiChatMessage, apiChatTranscribe, apiChatAudio } from '../api.js';
 import { formatChatMarkdown, playAudioBase64 } from '../utils.js';
@@ -116,8 +117,8 @@ function Message({ msg, onGameComplete }) {
   if (msg.type === 'ai' && msg.text?.includes('"step_type"') && msg.text?.includes('"steps"')) {
     try {
       const match = msg.text.match(/```json\s*([\s\S]*?)\s*```/) ||
-                    msg.text.match(/```\s*([\s\S]*?)\s*```/) ||
-                    msg.text.match(/(\{[\s\S]*"steps"[\s\S]*\})/);
+        msg.text.match(/```\s*([\s\S]*?)\s*```/) ||
+        msg.text.match(/(\{[\s\S]*"steps"[\s\S]*\})/);
       if (match) {
         const gd = JSON.parse(match[1]);
         if (gd.steps && gd.title) {
@@ -182,12 +183,16 @@ function Message({ msg, onGameComplete }) {
 }
 
 /* ── Main ChatView ──────────────────────────────────────────── */
-export default function ChatView({ studentData, prediction, explanation, whatif, onScoreboardUpdate, onStatusChange }) {
-  const [messages, setMessages] = useState([]);
+export default function ChatView({
+  studentData, prediction, explanation, whatif,
+  onScoreboardUpdate, onStatusChange, onBack,
+  // Lifted state from App — persists across view switches
+  messages, setMessages,
+  sessionId, setSessionId,
+  initialized, setInitialized,
+  isTyping, setIsTyping,             // lifted — survives view switches
+}) {
   const [input, setInput] = useState('');
-  const [sessionId, setSessionId] = useState(null);
-  const [initialized, setInitialized] = useState(false);
-  const [isTyping, setIsTyping] = useState(false);
   const [recordingMode, setRecordingMode] = useState(null); // 'stt' | 'live' | null
   const msgsRef = useRef(null);
   const mrRef = useRef(null);
@@ -198,9 +203,9 @@ export default function ChatView({ studentData, prediction, explanation, whatif,
     if (msgsRef.current) msgsRef.current.scrollTop = msgsRef.current.scrollHeight;
   }, [messages, isTyping]);
 
-  // Init chat on mount
+  // Init chat ONCE per session — guard with lifted `initialized` flag
   useEffect(() => {
-    if (initialized) return;
+    if (initialized) return;          // already done — don't re-fire
     setInitialized(true);
     setIsTyping(true);
     onStatusChange?.('Connecting...');
@@ -217,7 +222,7 @@ export default function ChatView({ studentData, prediction, explanation, whatif,
         onStatusChange?.('Offline');
       })
       .finally(() => setIsTyping(false));
-  }, []);
+  }, []); // empty deps — runs only on first mount; guard handles re-mounts
 
   async function sendMessage(text) {
     const msg = (text || input).trim();
@@ -277,8 +282,8 @@ export default function ChatView({ studentData, prediction, explanation, whatif,
     try {
       const d = await apiChatAudio(blob, sessionId);
       setMessages(p => [...p,
-        { type: 'user', text: `🎤 ${d.transcript}` },
-        { type: 'ai', text: d.response },
+      { type: 'user', text: `🎤 ${d.transcript}` },
+      { type: 'ai', text: d.response },
       ]);
       if (d.audio_base64) playAudioBase64(d.audio_base64);
       if (d.points_update) onScoreboardUpdate?.(d.new_points, d.new_level, d.new_kurals);
@@ -309,9 +314,21 @@ export default function ChatView({ studentData, prediction, explanation, whatif,
           </h1>
           <p style={{ color: '#64748b', marginTop: 6, fontSize: '1rem' }}>How may I help you today?</p>
         </div>
-        <button style={{ width: 32, height: 32, borderRadius: '50%', border: '1px solid #e2e8f0', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#94a3b8' }}>
-          <MoreHorizontal size={16} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {onBack && (
+            <button onClick={onBack} style={{
+              display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px',
+              background: 'white', border: '1px solid #e2e8f0', borderRadius: 99,
+              fontSize: 13, fontWeight: 600, color: '#64748b', cursor: 'pointer',
+            }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
+              Results
+            </button>
+          )}
+          <button style={{ width: 32, height: 32, borderRadius: '50%', border: '1px solid #e2e8f0', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#94a3b8' }}>
+            <MoreHorizontal size={16} />
+          </button>
+        </div>
       </header>
 
       {/* ── Scrollable message area ── */}
