@@ -1,0 +1,28 @@
+# OS Specific
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Project Specific
+tmp/
+placement_chat.db
+*.log
+*.pkl
+.ipynb_checkpoints/
+
+# IDE Specific
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker
+.dockerignore
+Dockerfile
