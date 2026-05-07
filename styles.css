@@ -2488,3 +2488,54 @@ input:checked+.sim-slider-round:before {
     70% { box-shadow: 0 0 0 10px rgba(211, 84, 0, 0); }
     100% { box-shadow: 0 0 0 0 rgba(211, 84, 0, 0); }
 }
+
+/* ============================================
+   Fullscreen Chat & Sequence Puzzle UI
+   ============================================ */
+.chat-panel.fullscreen {
+    width: 100vw !important;
+    height: 100vh !important;
+    bottom: 0 !important;
+    right: 0 !important;
+    border-radius: 0 !important;
+    max-height: 100vh !important;
+    z-index: 10000;
+}
+
+.chat-panel.fullscreen .chat-messages {
+    max-height: calc(100vh - 140px);
+}
+
+.sequence-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 15px 0;
+    padding: 10px;
+    border-radius: 8px;
+    transition: border-color 0.3s;
+    border: 2px solid transparent;
+}
+
+.sequence-item {
+    background: var(--cream);
+    border: 1px solid var(--gray-300);
+    padding: 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: center;
+    user-select: none;
+    transition: all 0.2s ease;
+    font-weight: 500;
+}
+
+.sequence-item:hover {
+    border-color: var(--black);
+}
+
+.sequence-item.selected {
+    background: var(--accent-teal);
+    color: white;
+    border-color: var(--accent-teal);
+    transform: scale(0.98);
+}

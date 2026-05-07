@@ -69,7 +69,7 @@ async function fetchOptions() {
             opt.textContent = stream;
             streamSelect.appendChild(opt);
         });
-        
+
         const roleSelect = document.getElementById('desired_role');
         roleSelect.innerHTML = '<option value="">Select Target Job Role</option>';
         if (data.jobs && data.jobs.length > 0) {
@@ -207,11 +207,11 @@ function setupEventListeners() {
     const resumeUpload = document.getElementById('resumeUpload');
     const resumeStatus = document.getElementById('resumeStatus');
 
-    if(resumeUpload) {
+    if (resumeUpload) {
         resumeUpload.addEventListener('change', async (e) => {
             const file = e.target.files[0];
-            if(!file) return;
-            
+            if (!file) return;
+
             resumeStatus.textContent = "⏳ Paati is reading your resume...";
             resumeStatus.style.color = "#FF9800";
 
@@ -219,9 +219,9 @@ function setupEventListeners() {
             fd.append('file', file);
 
             try {
-                const res = await fetch(`${API_BASE_URL}/upload/resume`, {method: 'POST', body: fd});
+                const res = await fetch(`${API_BASE_URL}/upload/resume`, { method: 'POST', body: fd });
                 const data = await res.json();
-                if(data.status === "success") {
+                if (data.status === "success") {
                     document.getElementById('resumeTextHidden').value = data.resume_text;
                     resumeStatus.textContent = "✅ Resume loaded! Paati knows your skills now.";
                     resumeStatus.style.color = "#4CAF50";
@@ -748,12 +748,12 @@ function fillDemoData() {
     document.getElementById('cgpa').value = '7.5';
     document.getElementById('hostel').checked = true;
     document.getElementById('backlogs').checked = true; // Highlighting improvement area
-    
+
     // Setup skills tags visually and hidden
     selectedSkills = ['Python', 'SQL', 'Git'];
     const hiddenInput = document.getElementById('skills');
     const tagsContainer = document.getElementById('skillsTags');
-    
+
     if (tagsContainer && hiddenInput) {
         tagsContainer.innerHTML = '';
         selectedSkills.forEach((skill, index) => {
@@ -1097,12 +1097,29 @@ function updatePaatiScoreboard(points, level, kurals) {
     document.getElementById('userKurals').textContent = kurals;
 }
 
+let currentPaatiAudio = null;
+
+function playAudioBase64(base64String) {
+    if (!base64String) return;
+    if (currentPaatiAudio) {
+        currentPaatiAudio.pause();
+        currentPaatiAudio.currentTime = 0;
+    }
+    currentPaatiAudio = new Audio("data:audio/wav;base64," + base64String);
+    currentPaatiAudio.play().catch(e => console.error("Audio play failed:", e));
+}
+
+function toggleFullscreen() {
+    chatElems.panel.classList.toggle('fullscreen');
+}
+
 function initChatElements() {
     chatElems = {
         widget: document.getElementById('chatWidget'),
         toggle: document.getElementById('chatToggle'),
         panel: document.getElementById('chatPanel'),
         minimize: document.getElementById('chatMinimize'),
+        expand: document.getElementById('chatExpand'),
         messages: document.getElementById('chatMessages'),
         input: document.getElementById('chatInput'),
         send: document.getElementById('chatSend'),
@@ -1114,8 +1131,9 @@ function initChatElements() {
 
     chatElems.toggle.addEventListener('click', toggleChat);
     chatElems.minimize.addEventListener('click', toggleChat);
+    if (chatElems.expand) chatElems.expand.addEventListener('click', toggleFullscreen);
     chatElems.send.addEventListener('click', sendChatMessage);
-    if(chatElems.mic) {
+    if (chatElems.mic) {
         chatElems.mic.addEventListener('click', toggleRecording);
     }
     chatElems.input.addEventListener('keypress', (e) => {
@@ -1186,11 +1204,16 @@ async function initializeChat() {
 
         removeTypingIndicator();
         addChatMessage('ai', data.message);
-        
+
+        // NEW: Play the greeting audio immediately!
+        if (data.audio_base64) {
+            playAudioBase64(data.audio_base64);
+        }
+
         if (data.points_update) {
             updatePaatiScoreboard(data.new_points, data.new_level, data.new_kurals);
         }
-        
+
         setChatStatus('Online');
 
     } catch (error) {
@@ -1229,11 +1252,14 @@ async function sendChatMessage() {
         const data = await response.json();
         removeTypingIndicator();
         addChatMessage('ai', data.response);
-        
+
+        // PLAY TTS AUDIO IF RECEIVED
+        if (data.audio_base64) playAudioBase64(data.audio_base64);
+
         if (data.points_update) {
             updatePaatiScoreboard(data.new_points, data.new_level, data.new_kurals);
         }
-        
+
         setChatStatus('Online');
 
     } catch (error) {
@@ -1248,7 +1274,6 @@ function addChatMessage(type, text) {
     const msgDiv = document.createElement('div');
     msgDiv.className = `chat-msg chat-msg-${type}`;
 
-    // Detect MiniGame JSON
     if (type === 'ai' && text.includes('"step_type"') && text.includes('"steps"')) {
         try {
             let jsonStr = text;
@@ -1257,14 +1282,14 @@ function addChatMessage(type, text) {
                 jsonStr = match[1];
             }
             const gameData = JSON.parse(jsonStr);
-            
+
             if (gameData.steps && gameData.title) {
                 const bubble = document.createElement('div');
                 bubble.className = 'chat-bubble mini-game-container';
                 bubble.style.cssText = "background:var(--cream-dark); border:2px solid var(--accent-gold); border-radius:15px; padding:15px; width:100%; max-width:100%; box-shadow:var(--shadow-md);";
-                
+
                 let currentStep = 0;
-                
+
                 function renderStep() {
                     if (currentStep >= gameData.steps.length) {
                         bubble.innerHTML = `
@@ -1282,31 +1307,109 @@ function addChatMessage(type, text) {
                         };
                         return;
                     }
-                    
+
                     const step = gameData.steps[currentStep];
                     let html = `
                         <div style="font-size:0.75rem; font-weight:bold; color:var(--accent-coral); text-transform:uppercase; margin-bottom:8px;">${gameData.title} - Level: ${gameData.level}</div>
                         <div style="font-size:3rem; text-align:center; margin:15px 0;">${step.visual}</div>
                         <p style="font-style:italic; margin-bottom:15px; line-height:1.4;">👵 "${step.paati_says}"</p>
                     `;
-                    
+
                     if (step.question) {
                         html += `<p style="font-weight:600; margin-bottom:15px;">${step.question}</p>`;
                     }
-                    
-                    if (step.options && step.options.length > 0) {
+
+                    // Render Sequence Puzzle
+                    if (step.step_type === 'sequence' && step.sequence_items) {
+                        html += `<p style="font-size:0.85rem; color:var(--gray-500); margin-bottom:10px;">Click the items in the correct order:</p>`;
+                        html += `<div class="sequence-container" id="seq-${currentStep}">`;
+                        step.sequence_items.forEach((item) => {
+                            html += `<div class="sequence-item" data-item="${item.replace(/"/g, '&quot;')}">${item}</div>`;
+                        });
+                        html += `</div>`;
+
+                        // NEW: Render Code Debug Puzzle
+                    } else if (step.step_type === 'code_debug' && step.code_snippet) {
+                        html += `<p style="font-size:0.85rem; color:var(--gray-500); margin-bottom:10px;">Find the bug! Type the line number:</p>`;
+                        html += `<pre style="background:#1e1e1e; color:#d4d4d4; padding:10px; border-radius:6px; font-size:0.8rem; overflow-x:auto;"><code>${step.code_snippet}</code></pre>`;
+                        html += `<div style="display:flex; gap:10px; margin-top:10px;">
+                                    <input type="number" id="debug-line-input" placeholder="Line #" style="flex:1; padding:8px; border-radius:4px; border:1px solid #ccc; background:var(--cream); color:black;">
+                                    <button id="debug-submit" style="padding:8px 16px; background:var(--accent-teal); color:white; border:none; border-radius:4px; cursor:pointer;">Fix Bug</button>
+                                 </div>`;
+
+                        // Render Options Quiz
+                    } else if (step.options && step.options.length > 0) {
                         html += `<div style="display:flex; flex-direction:column; gap:8px;">`;
                         step.options.forEach(opt => {
                             html += `<button class="game-opt-btn" data-val="${opt.replace(/"/g, '&quot;')}" style="padding:10px; background:var(--cream); border:1px solid var(--gray-300); border-radius:8px; cursor:pointer; text-align:left; transition:0.2s;">${opt}</button>`;
                         });
                         html += `</div>`;
+
+                        // Render Simple Dialogue
                     } else if (step.step_type === 'dialogue') {
                         html += `<button class="game-next-btn" style="margin-top:10px; padding:10px; background:var(--accent-teal); color:white; border:none; border-radius:8px; cursor:pointer; width:100%; font-weight:bold;">Next</button>`;
                     }
-                    
+
                     bubble.innerHTML = html;
-                    
-                    if (step.options && step.options.length > 0) {
+
+                    // Sequence Logic
+                    if (step.step_type === 'sequence' && step.sequence_items) {
+                        let selectedOrder = [];
+                        const seqContainer = bubble.querySelector(`#seq-${currentStep}`);
+                        const items = seqContainer.querySelectorAll('.sequence-item');
+
+                        items.forEach(itemEl => {
+                            itemEl.onclick = (e) => {
+                                if (itemEl.classList.contains('selected')) return;
+                                itemEl.classList.add('selected');
+                                const val = itemEl.getAttribute('data-item');
+                                selectedOrder.push(val);
+
+                                if (selectedOrder.length === step.sequence_items.length) {
+                                    let isCorrect = true;
+                                    for (let i = 0; i < selectedOrder.length; i++) {
+                                        if (selectedOrder[i] !== step.correct_sequence[i]) {
+                                            isCorrect = false;
+                                            break;
+                                        }
+                                    }
+                                    if (isCorrect) {
+                                        seqContainer.style.borderColor = 'var(--risk-low)';
+                                        setTimeout(() => { currentStep++; renderStep(); }, 1000);
+                                    } else {
+                                        seqContainer.style.borderColor = 'var(--risk-high)';
+                                        setTimeout(() => {
+                                            selectedOrder = [];
+                                            items.forEach(i => i.classList.remove('selected'));
+                                            seqContainer.style.borderColor = 'transparent';
+                                        }, 800);
+                                    }
+                                }
+                            };
+                        });
+
+                        // NEW: Code Debug Logic
+                    } else if (step.step_type === 'code_debug' && step.code_snippet) {
+                        const submitBtn = bubble.querySelector('#debug-submit');
+                        const inputField = bubble.querySelector('#debug-line-input');
+                        submitBtn.onclick = () => {
+                            const val = parseInt(inputField.value);
+                            if (val === step.bug_line) {
+                                submitBtn.style.background = 'var(--risk-low)';
+                                submitBtn.textContent = 'Correct!';
+                                setTimeout(() => { currentStep++; renderStep(); }, 1000);
+                            } else {
+                                submitBtn.style.background = 'var(--risk-high)';
+                                submitBtn.textContent = 'Try Again';
+                                setTimeout(() => {
+                                    submitBtn.style.background = 'var(--accent-teal)';
+                                    submitBtn.textContent = 'Fix Bug';
+                                }, 1000);
+                            }
+                        }
+
+                        // Quiz Logic
+                    } else if (step.options && step.options.length > 0) {
                         bubble.querySelectorAll('.game-opt-btn').forEach(btn => {
                             btn.onclick = (e) => {
                                 const val = e.target.getAttribute('data-val');
@@ -1327,6 +1430,8 @@ function addChatMessage(type, text) {
                                 }
                             };
                         });
+
+                        // Dialogue Logic
                     } else if (step.step_type === 'dialogue') {
                         bubble.querySelector('.game-next-btn').onclick = () => {
                             currentStep++;
@@ -1334,9 +1439,9 @@ function addChatMessage(type, text) {
                         };
                     }
                 }
-                
+
                 renderStep();
-                
+
                 const textBefore = text.split(/```json|\{/)[0].trim();
                 if (textBefore) {
                     const txtBubble = document.createElement('div');
@@ -1344,7 +1449,7 @@ function addChatMessage(type, text) {
                     txtBubble.innerHTML = formatChatMarkdown(textBefore);
                     msgDiv.appendChild(txtBubble);
                 }
-                
+
                 msgDiv.appendChild(bubble);
                 chatElems.messages.appendChild(msgDiv);
                 chatElems.messages.scrollTop = chatElems.messages.scrollHeight;
@@ -1415,7 +1520,7 @@ async function toggleRecording() {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             mediaRecorder = new MediaRecorder(stream);
             mediaRecorder.ondataavailable = e => {
-                if(e.data.size > 0) audioChunks.push(e.data);
+                if (e.data.size > 0) audioChunks.push(e.data);
             };
             mediaRecorder.onstop = sendAudioMessage;
             mediaRecorder.start();
@@ -1439,7 +1544,7 @@ async function toggleRecording() {
 async function sendAudioMessage() {
     const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
     audioChunks = [];
-    
+
     addTypingIndicator();
     setChatStatus('Transcribing...');
 
@@ -1452,24 +1557,24 @@ async function sendAudioMessage() {
             method: 'POST',
             body: formData
         });
-        
+
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        
+
         const data = await response.json();
         removeTypingIndicator();
-        
-        // Show user's transcribed audio as their chat bubble
+
         addChatMessage('user', `🎤 <i>${data.transcript}</i>`);
-        
-        // Show AI response
         addChatMessage('ai', data.response);
-        
+
+        // PLAY TTS AUDIO IF RECEIVED
+        if (data.audio_base64) playAudioBase64(data.audio_base64);
+
         if (data.points_update) {
             updatePaatiScoreboard(data.new_points, data.new_level, data.new_kurals);
         }
-        
+
         setChatStatus('Online');
-        
+
     } catch (error) {
         console.error('Audio Chat error:', error);
         removeTypingIndicator();

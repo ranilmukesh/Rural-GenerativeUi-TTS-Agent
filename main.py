@@ -20,6 +20,7 @@ from pathlib import Path
 import tempfile
 from sarvam_stt import get_sarvam_service
 import re
+from sarvam_tts import get_tts_base64
 
 # In-memory DB for tracking user progress across chat sessions
 user_progress_db = {}
@@ -503,15 +504,14 @@ async def chat_audio(session_id: str = Form(...), audio_file: UploadFile = File(
 
     try:
         stt = get_sarvam_service()
-        # Convert webm audio to text using Sarvam
         result = stt.transcribe_sync(Path(tmp_path), language_code="ta-IN")
         transcript = result.transcript
 
         if not transcript or transcript.strip() == "":
             return {"transcript": "(Inaudible)", "response": "Kanna, your voice broke! Ennaku kekala. Can you repeat?"}
 
-        # Send transcribed text to LLM
         resp = get_chat_response(session_id, transcript)
+        audio_b64 = get_tts_base64(resp, speaker="priya") # Using a female voice for Paati
         
         prog = user_progress_db.get(session_id, {"points": 0, "level": "Seed (Vithu)", "kurals": 0})
         points_update = False
@@ -536,6 +536,7 @@ async def chat_audio(session_id: str = Form(...), audio_file: UploadFile = File(
         return {
             "transcript": transcript,
             "response": resp,
+            "audio_base64": audio_b64,
             "points_update": points_update,
             "new_points": prog["points"],
             "new_level": prog["level"],
@@ -558,9 +559,16 @@ async def chat_s(req: dict):
     
     sid, greet = start_chat_session(student_data, prediction, explanation, whatif)
     
+    # NEW: Generate TTS audio for the initial greeting
+    audio_b64 = get_tts_base64(greet, speaker="priya") 
+    
     user_progress_db[sid] = {"points": 0, "level": "Seed (Vithu)", "kurals": 0}
     
-    return {"session_id": sid, "message": greet}
+    return {
+        "session_id": sid, 
+        "message": greet,
+        "audio_base64": audio_b64  # Returning the audio payload
+    }
 
 @app.post("/chat/message")
 async def chat_m(req: dict):
@@ -569,11 +577,11 @@ async def chat_m(req: dict):
         
     sid = req.get('session_id')
     resp = get_chat_response(sid, req.get('message'))
+    audio_b64 = get_tts_base64(resp, speaker="priya") # Paati voice
     
     prog = user_progress_db.get(sid, {"points": 0, "level": "Seed (Vithu)", "kurals": 0})
     points_update = False
     
-    # Parse points and level from response
     points_match = re.search(r'(\d+)\s*(?:Paati[-‑\s]*Points|points)', resp, re.IGNORECASE)
     if points_match:
         points_update = True
@@ -593,6 +601,7 @@ async def chat_m(req: dict):
     
     return {
         "response": resp,
+        "audio_base64": audio_b64,
         "points_update": points_update,
         "new_points": prog["points"],
         "new_level": prog["level"],

@@ -571,11 +571,18 @@
                         </span>
                     </div>
                 </div>
-                <button class="chat-minimize" id="chatMinimize">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M6 9l6 6 6-6" />
-                    </svg>
-                </button>
+                <div style="display: flex; gap: 8px;">
+                    <button class="chat-expand" id="chatExpand" title="Toggle Fullscreen" style="background: none; border: none; color: var(--gray-400); cursor: pointer; padding: 4px;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px;">
+                            <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+                        </svg>
+                    </button>
+                    <button class="chat-minimize" id="chatMinimize" title="Minimize Chat" style="background: none; border: none; color: var(--gray-400); cursor: pointer; padding: 4px;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px;">
+                            <path d="M6 9l6 6 6-6" />
+                        </svg>
+                    </button>
+                </div>
             </div>
 
             <div class="chat-messages" id="chatMessages"></div>
