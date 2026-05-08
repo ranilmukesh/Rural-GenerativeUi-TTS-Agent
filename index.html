@@ -571,25 +571,44 @@
                         </span>
                     </div>
                 </div>
-                <button class="chat-minimize" id="chatMinimize">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M6 9l6 6 6-6" />
-                    </svg>
-                </button>
+                <div style="display: flex; gap: 8px;">
+                    <button class="chat-expand" id="chatExpand" title="Toggle Fullscreen" style="background: none; border: none; color: var(--gray-400); cursor: pointer; padding: 4px;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px;">
+                            <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+                        </svg>
+                    </button>
+                    <button class="chat-minimize" id="chatMinimize" title="Minimize Chat" style="background: none; border: none; color: var(--gray-400); cursor: pointer; padding: 4px;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px;">
+                            <path d="M6 9l6 6 6-6" />
+                        </svg>
+                    </button>
+                </div>
             </div>
 
             <div class="chat-messages" id="chatMessages"></div>
 
             <div class="chat-input-area">
-                <button class="chat-mic" id="chatMic" title="Voice Message (Tamil/English)">
-                    <svg viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
-                        <path
-                            d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.87 3.13 7 7 7v3h4v-3c3.87 0 7-3.13 7-7h-2z" />
+                <button class="chat-mic" id="chatMicSTT" title="Dictate Text (Voice to Text)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                        <line x1="12" y1="19" x2="12" y2="22"></line>
                     </svg>
                 </button>
-                <input type="text" class="chat-input" id="chatInput" placeholder="Reply to Paati..."
-                    autocomplete="off" />
+                
+                <button class="chat-mic" id="chatMicLive" title="Live Voice Conversation">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M2 10v3"></path>
+                        <path d="M6 6v11"></path>
+                        <path d="M10 3v18"></path>
+                        <path d="M14 8v7"></path>
+                        <path d="M18 5v13"></path>
+                        <path d="M22 10v3"></path>
+                    </svg>
+                </button>
+
+                <input type="text" class="chat-input" id="chatInput" placeholder="Reply to Paati..." autocomplete="off" />
+                
                 <button class="chat-send" id="chatSend" disabled>
                     <svg viewBox="0 0 24 24" fill="currentColor">
                         <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />

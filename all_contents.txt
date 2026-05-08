@@ -675,11 +675,18 @@ index.html:
                         </span>
                     </div>
                 </div>
-                <button class="chat-minimize" id="chatMinimize">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M6 9l6 6 6-6" />
-                    </svg>
-                </button>
+                <div style="display: flex; gap: 8px;">
+                    <button class="chat-expand" id="chatExpand" title="Toggle Fullscreen" style="background: none; border: none; color: var(--gray-400); cursor: pointer; padding: 4px;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px;">
+                            <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+                        </svg>
+                    </button>
+                    <button class="chat-minimize" id="chatMinimize" title="Minimize Chat" style="background: none; border: none; color: var(--gray-400); cursor: pointer; padding: 4px;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px;">
+                            <path d="M6 9l6 6 6-6" />
+                        </svg>
+                    </button>
+                </div>
             </div>
 
             <div class="chat-messages" id="chatMessages"></div>
@@ -749,6 +756,7 @@ else:
 from agno.agent import Agent
 from agno.models.nvidia import Nvidia
 from agno.db.sqlite import SqliteDb
+from agno.tools.duckduckgo import DuckDuckGoTools
 from llm_tools import award_paati_points, check_government_schemes, get_tenali_puzzle, generate_mini_game
 
 # Ensure tmp directory exists for chat DB
@@ -864,7 +872,7 @@ def start_chat_session(
             top_p=0.95,
             id="nvidia/nemotron-3-super-120b-a12b"
         ),
-        tools=[award_paati_points, check_government_schemes, get_tenali_puzzle, generate_mini_game],
+        tools=[award_paati_points, check_government_schemes, get_tenali_puzzle, generate_mini_game, DuckDuckGoTools()],
         description=(
             "You are 'Paati' (Grandma), an endearing, wise elder from a Tamil village who acts as a career coach. "
             "You run the 'Paati-Kural League', a gamified learning platform bridging rural students to real jobs. "
@@ -875,7 +883,7 @@ def start_chat_session(
             "Speak in Tanglish as Paati.",
             "GOAL 1: If the student answers correctly, call 'award_paati_points' with points and a reason.",
             "GOAL 2: Use 'get_tenali_puzzle' to teach a concept instead of explaining it directly.",
-            "GOAL 3: Use 'check_government_schemes' to find real jobs/training for them when they reach 500 points.",
+            "GOAL 3: Use 'check_government_schemes' to find real jobs/training for them when they reach 500 points. USE DuckDuckGoTools to search the live web for recent application deadlines or links regarding that scheme.",
             "GOAL 4: If the student needs to learn a new concept (like SQL, Compound Interest, etc.), use 'generate_mini_game' to build a visual interactive game. CRITICAL: You MUST include the raw JSON output from the tool exactly as-is in your response, wrapped in a ```json markdown block, otherwise the game UI will not render. Keep your own intro very brief.",
             "If the student asks for an 'analysis' of their game performance or career progress, provide a detailed, encouraging 'Paati Analysis' using their specific Resume data, SHAP factors, and recent game success.",
             "Keep track of their 'Level': Seed -> Sapling -> Tree.",
@@ -949,22 +957,23 @@ from agno.models.nvidia import Nvidia
 from agno.tools import tool
 
 class GameStep(BaseModel):
-    step_type: Literal["dialogue", "choice", "drag_drop", "calc", "quiz"]
+    step_type: Literal["dialogue", "choice", "drag_drop", "calc", "quiz", "sequence"]
     paati_says: str = Field(description="Tanglish narration from Paati")
     visual: str = Field(description="Emoji/scene like '🥭🥭🥭👑'")
     question: Optional[str] = None
     options: Optional[List[str]] = None
     correct_answer: Optional[str] = None
+    sequence_items: Optional[List[str]] = Field(default=None, description="List of items in randomized order to be sorted (for sequence puzzles)")
+    correct_sequence: Optional[List[str]] = Field(default=None, description="The correct ordered list of sequence_items")
     points_on_success: int = 10
 
 class MiniGame(BaseModel):
     title: str = Field(description="e.g. 'Tenali's Mango Market Simulator'")
-    concept_taught: str = Field(description="e.g. 'Compound Interest', 'SQL JOIN'")
+    concept_taught: str = Field(description="e.g. 'Compound Interest', 'SQL JOIN', 'Logic'")
     level: Literal["Seed", "Sapling", "Tree"]
     steps: List[GameStep] = Field(min_length=3, max_length=6)
     final_reward_badge: str
 
-# Use a slightly cheaper model for the mini game generator
 game_agent = Agent(
     model=Nvidia(id="qwen/qwen3-coder-480b-a35b-instruct", 
     max_tokens=16384,
@@ -974,15 +983,15 @@ game_agent = Agent(
     description="You design tiny gamified JSON lessons for rural Tamil students using Tenali Raman folklore.",
     instructions=[
         "You output ONLY one valid JSON object. No prose. No markdown. No code fences.",
-        "Schema: {title, concept_taught, level, steps:[{step_type, paati_says, visual, points_on_success, question?, options?, correct_answer?}], final_reward_badge}",
         "level MUST be one of: Seed, Sapling, Tree.",
-        "step_type MUST be one of: dialogue, choice, drag_drop, calc, quiz.",
+        "step_type MUST be one of: dialogue, choice, sequence.",
+        "If step_type is 'sequence', you MUST provide 'sequence_items' (random order) and 'correct_sequence' (the answer).",
         "steps array length: 3 to 6.",
         "Tanglish narration. Use mangoes, bullock carts, paddy field metaphors.",
     ],
 )
 
-@tool(name="generate_mini_game", description="Generate an interactive mini-game teaching a concept.")
+@tool(name="generate_mini_game", description="Generate an interactive mini-game or sequence puzzle teaching a concept.")
 def generate_mini_game(concept: str, level: str) -> str:
     """
     Generate an interactive mini-game teaching a concept. 
@@ -994,18 +1003,18 @@ def generate_mini_game(concept: str, level: str) -> str:
     Returns:
         JSON string representing the game.
     """
-    prompt = f"""Build a {level} mini-game teaching '{concept}'. Output ONLY this JSON shape:
+    prompt = f"""Build a {level} mini-game teaching '{concept}'. Include at least one 'sequence' step where the student has to order items correctly. Output ONLY the JSON shape:
 
 {{
-  "title": "Tenali's Mango Market",
+  "title": "Tenali's Array Sort",
   "concept_taught": "{concept}",
   "level": "{level}",
   "steps": [
-    {{"step_type":"dialogue","paati_says":"Vaa kanna...","visual":"🥭🥭🥭","points_on_success":0}},
-    {{"step_type":"quiz","paati_says":"Sollu paaru","visual":"👑","question":"...","options":["A","B"],"correct_answer":"A","points_on_success":20}},
+    {{"step_type":"dialogue","paati_says":"Vaa kanna...","visual":"🥭","points_on_success":0}},
+    {{"step_type":"sequence","paati_says":"Order these correctly:","visual":"🔢","sequence_items":["Step 3", "Step 1", "Step 2"],"correct_sequence":["Step 1", "Step 2", "Step 3"],"points_on_success":20}},
     {{"step_type":"dialogue","paati_says":"Romba nalla!","visual":"🏆","points_on_success":0}}
   ],
-  "final_reward_badge": "Mango Master"
+  "final_reward_badge": "Logic Master"
 }}
 
 Now output the real game JSON only."""
@@ -1017,36 +1026,18 @@ Now output the real game JSON only."""
         if isinstance(content, MiniGame):
             return content.model_dump_json()
         try:
-            # Try parsing if it returned a string or dict
             data = content if isinstance(content, str) else json.dumps(content)
             return MiniGame.model_validate_json(data).model_dump_json()
         except Exception:
             continue
     return json.dumps({"error": "schema_parse_failed"})
+
 @tool(name="award_paati_points", description="Award Paati-Kural points to the student for a correct answer or completed challenge.")
 def award_paati_points(points: int, reason: str) -> str:
-    """
-    Args:
-        points: Number of points to award (e.g., 10, 50, 100).
-        reason: Short reason for the award (e.g., "Solved Tenali math puzzle").
-
-    Returns:
-        Confirmation string.
-    """
-    # Logic to update user_progress table in SQLite
     return f"Successfully awarded {points} points to student for {reason}."
 
 @tool(name="check_government_schemes", description="Look up real Tamil Nadu / Central government schemes relevant to the student.")
 def check_government_schemes(cgpa: float, stream: str, skills: list[str]) -> str:
-    """
-    Args:
-        cgpa: Student's CGPA.
-        stream: Student's academic stream (e.g., "Engineering", "Arts").
-        skills: List of student skills.
-
-    Returns:
-        JSON string of relevant schemes (name, link, criteria).
-    """
     schemes = [
         {"name": "Naan Mudhalvan", "link": "https://www.naanmudhalvan.tn.gov.in/", "criteria": "Engineering/Arts Students"},
         {"name": "TNSDC Skill Training", "link": "https://www.tnsdc.tn.gov.in/", "criteria": "Vocational Skills"},
@@ -1057,13 +1048,6 @@ def check_government_schemes(cgpa: float, stream: str, skills: list[str]) -> str
 
 @tool(name="get_tenali_puzzle", description="Retrieve a folklore-themed Samacheer logic puzzle for the given topic.")
 def get_tenali_puzzle(topic: str) -> str:
-    """
-    Args:
-        topic: Topic of the puzzle, e.g., "Math" or "Logic".
-
-    Returns:
-        Puzzle text as a string.
-    """
     puzzles = {
         "Math": "Tenali Raman has 5 mangoes. He gives 2 to the King but the King doubles what is left. How many mangoes now?",
         "Logic": "If a cat in Madurai has 3 kittens, and each kitten has 2 spots, how many spots in total in the village?"
@@ -1094,6 +1078,7 @@ from pathlib import Path
 import tempfile
 from sarvam_stt import get_sarvam_service
 import re
+from sarvam_tts import get_tts_base64
 
 # In-memory DB for tracking user progress across chat sessions
 user_progress_db = {}
@@ -1577,15 +1562,14 @@ async def chat_audio(session_id: str = Form(...), audio_file: UploadFile = File(
 
     try:
         stt = get_sarvam_service()
-        # Convert webm audio to text using Sarvam
         result = stt.transcribe_sync(Path(tmp_path), language_code="ta-IN")
         transcript = result.transcript
 
         if not transcript or transcript.strip() == "":
             return {"transcript": "(Inaudible)", "response": "Kanna, your voice broke! Ennaku kekala. Can you repeat?"}
 
-        # Send transcribed text to LLM
         resp = get_chat_response(session_id, transcript)
+        audio_b64 = get_tts_base64(resp, speaker="priya") # Using a female voice for Paati
         
         prog = user_progress_db.get(session_id, {"points": 0, "level": "Seed (Vithu)", "kurals": 0})
         points_update = False
@@ -1610,6 +1594,7 @@ async def chat_audio(session_id: str = Form(...), audio_file: UploadFile = File(
         return {
             "transcript": transcript,
             "response": resp,
+            "audio_base64": audio_b64,
             "points_update": points_update,
             "new_points": prog["points"],
             "new_level": prog["level"],
@@ -1643,11 +1628,11 @@ async def chat_m(req: dict):
         
     sid = req.get('session_id')
     resp = get_chat_response(sid, req.get('message'))
+    audio_b64 = get_tts_base64(resp, speaker="priya") # Paati voice
     
     prog = user_progress_db.get(sid, {"points": 0, "level": "Seed (Vithu)", "kurals": 0})
     points_update = False
     
-    # Parse points and level from response
     points_match = re.search(r'(\d+)\s*(?:Paati[-‑\s]*Points|points)', resp, re.IGNORECASE)
     if points_match:
         points_update = True
@@ -1667,6 +1652,7 @@ async def chat_m(req: dict):
     
     return {
         "response": resp,
+        "audio_base64": audio_b64,
         "points_update": points_update,
         "new_points": prog["points"],
         "new_level": prog["level"],
@@ -1849,6 +1835,7 @@ sqlalchemy
 pytz
 sarvamai
 PyPDF2
+duckduckgo-search
 
 routing_engine.py:
 import pandas as pd
@@ -2035,6 +2022,52 @@ def get_sarvam_service() -> SarvamSTTService:
     return _sarvam_service
 
 
+sarvam_tts.py:
+import os
+import re
+from sarvamai import SarvamAI
+
+_client = None
+
+def get_tts_base64(text: str, language_code: str = "ta-IN", speaker: str = "priya") -> str:
+    """Converts cleaned text to speech using Sarvam Bulbul v3 REST API."""
+    global _client
+    if _client is None:
+        api_key = os.environ.get("SARVAM_API_KEY", "")
+        if not api_key:
+            return ""
+        _client = SarvamAI(api_subscription_key=api_key)
+    
+    # 1. Strip JSON code blocks entirely (we don't want Paati reading JSON)
+    clean_text = re.sub(r'```json.*?```', '', text, flags=re.DOTALL)
+    clean_text = re.sub(r'\n```.*?```', '', clean_text, flags=re.DOTALL)
+    clean_text = re.sub(r'\{.*?"steps".*?\}', '', clean_text, flags=re.DOTALL)
+    
+    # 2. Strip standard markdown symbols 
+    clean_text = clean_text.replace('**', '').replace('*', '').replace('#', '')
+    clean_text = clean_text.strip()
+    
+    if not clean_text:
+        return ""
+        
+    # Bulbul v3 character limit is 2500
+    clean_text = clean_text[:2499]
+
+    try:
+        response = _client.text_to_speech.convert(
+            text=clean_text,
+            target_language_code=language_code,
+            model="bulbul:v3",
+            speaker=speaker
+        )
+        if response.audios and len(response.audios) > 0:
+            return response.audios[0]
+        return ""
+    except Exception as e:
+        print(f"[TTS Error] {e}")
+        return ""
+
+
 script.js:
 /**
  * CardioSense+ Frontend Application
@@ -2107,7 +2140,7 @@ async function fetchOptions() {
             opt.textContent = stream;
             streamSelect.appendChild(opt);
         });
-        
+
         const roleSelect = document.getElementById('desired_role');
         roleSelect.innerHTML = '<option value="">Select Target Job Role</option>';
         if (data.jobs && data.jobs.length > 0) {
@@ -2245,11 +2278,11 @@ function setupEventListeners() {
     const resumeUpload = document.getElementById('resumeUpload');
     const resumeStatus = document.getElementById('resumeStatus');
 
-    if(resumeUpload) {
+    if (resumeUpload) {
         resumeUpload.addEventListener('change', async (e) => {
             const file = e.target.files[0];
-            if(!file) return;
-            
+            if (!file) return;
+
             resumeStatus.textContent = "⏳ Paati is reading your resume...";
             resumeStatus.style.color = "#FF9800";
 
@@ -2257,9 +2290,9 @@ function setupEventListeners() {
             fd.append('file', file);
 
             try {
-                const res = await fetch(`${API_BASE_URL}/upload/resume`, {method: 'POST', body: fd});
+                const res = await fetch(`${API_BASE_URL}/upload/resume`, { method: 'POST', body: fd });
                 const data = await res.json();
-                if(data.status === "success") {
+                if (data.status === "success") {
                     document.getElementById('resumeTextHidden').value = data.resume_text;
                     resumeStatus.textContent = "✅ Resume loaded! Paati knows your skills now.";
                     resumeStatus.style.color = "#4CAF50";
@@ -2786,12 +2819,12 @@ function fillDemoData() {
     document.getElementById('cgpa').value = '7.5';
     document.getElementById('hostel').checked = true;
     document.getElementById('backlogs').checked = true; // Highlighting improvement area
-    
+
     // Setup skills tags visually and hidden
     selectedSkills = ['Python', 'SQL', 'Git'];
     const hiddenInput = document.getElementById('skills');
     const tagsContainer = document.getElementById('skillsTags');
-    
+
     if (tagsContainer && hiddenInput) {
         tagsContainer.innerHTML = '';
         selectedSkills.forEach((skill, index) => {
@@ -3135,12 +3168,29 @@ function updatePaatiScoreboard(points, level, kurals) {
     document.getElementById('userKurals').textContent = kurals;
 }
 
+let currentPaatiAudio = null;
+
+function playAudioBase64(base64String) {
+    if (!base64String) return;
+    if (currentPaatiAudio) {
+        currentPaatiAudio.pause();
+        currentPaatiAudio.currentTime = 0;
+    }
+    currentPaatiAudio = new Audio("data:audio/wav;base64," + base64String);
+    currentPaatiAudio.play().catch(e => console.error("Audio play failed:", e));
+}
+
+function toggleFullscreen() {
+    chatElems.panel.classList.toggle('fullscreen');
+}
+
 function initChatElements() {
     chatElems = {
         widget: document.getElementById('chatWidget'),
         toggle: document.getElementById('chatToggle'),
         panel: document.getElementById('chatPanel'),
         minimize: document.getElementById('chatMinimize'),
+        expand: document.getElementById('chatExpand'),
         messages: document.getElementById('chatMessages'),
         input: document.getElementById('chatInput'),
         send: document.getElementById('chatSend'),
@@ -3152,8 +3202,9 @@ function initChatElements() {
 
     chatElems.toggle.addEventListener('click', toggleChat);
     chatElems.minimize.addEventListener('click', toggleChat);
+    if (chatElems.expand) chatElems.expand.addEventListener('click', toggleFullscreen);
     chatElems.send.addEventListener('click', sendChatMessage);
-    if(chatElems.mic) {
+    if (chatElems.mic) {
         chatElems.mic.addEventListener('click', toggleRecording);
     }
     chatElems.input.addEventListener('keypress', (e) => {
@@ -3224,11 +3275,11 @@ async function initializeChat() {
 
         removeTypingIndicator();
         addChatMessage('ai', data.message);
-        
+
         if (data.points_update) {
             updatePaatiScoreboard(data.new_points, data.new_level, data.new_kurals);
         }
-        
+
         setChatStatus('Online');
 
     } catch (error) {
@@ -3267,11 +3318,14 @@ async function sendChatMessage() {
         const data = await response.json();
         removeTypingIndicator();
         addChatMessage('ai', data.response);
-        
+
+        // PLAY TTS AUDIO IF RECEIVED
+        if (data.audio_base64) playAudioBase64(data.audio_base64);
+
         if (data.points_update) {
             updatePaatiScoreboard(data.new_points, data.new_level, data.new_kurals);
         }
-        
+
         setChatStatus('Online');
 
     } catch (error) {
@@ -3286,7 +3340,6 @@ function addChatMessage(type, text) {
     const msgDiv = document.createElement('div');
     msgDiv.className = `chat-msg chat-msg-${type}`;
 
-    // Detect MiniGame JSON
     if (type === 'ai' && text.includes('"step_type"') && text.includes('"steps"')) {
         try {
             let jsonStr = text;
@@ -3295,14 +3348,14 @@ function addChatMessage(type, text) {
                 jsonStr = match[1];
             }
             const gameData = JSON.parse(jsonStr);
-            
+
             if (gameData.steps && gameData.title) {
                 const bubble = document.createElement('div');
                 bubble.className = 'chat-bubble mini-game-container';
                 bubble.style.cssText = "background:var(--cream-dark); border:2px solid var(--accent-gold); border-radius:15px; padding:15px; width:100%; max-width:100%; box-shadow:var(--shadow-md);";
-                
+
                 let currentStep = 0;
-                
+
                 function renderStep() {
                     if (currentStep >= gameData.steps.length) {
                         bubble.innerHTML = `
@@ -3320,19 +3373,26 @@ function addChatMessage(type, text) {
                         };
                         return;
                     }
-                    
+
                     const step = gameData.steps[currentStep];
                     let html = `
                         <div style="font-size:0.75rem; font-weight:bold; color:var(--accent-coral); text-transform:uppercase; margin-bottom:8px;">${gameData.title} - Level: ${gameData.level}</div>
                         <div style="font-size:3rem; text-align:center; margin:15px 0;">${step.visual}</div>
                         <p style="font-style:italic; margin-bottom:15px; line-height:1.4;">👵 "${step.paati_says}"</p>
                     `;
-                    
+
                     if (step.question) {
                         html += `<p style="font-weight:600; margin-bottom:15px;">${step.question}</p>`;
                     }
-                    
-                    if (step.options && step.options.length > 0) {
+
+                    if (step.step_type === 'sequence' && step.sequence_items) {
+                        html += `<p style="font-size:0.85rem; color:var(--gray-500); margin-bottom:10px;">Click the items in the correct order:</p>`;
+                        html += `<div class="sequence-container" id="seq-${currentStep}">`;
+                        step.sequence_items.forEach((item) => {
+                            html += `<div class="sequence-item" data-item="${item.replace(/"/g, '&quot;')}">${item}</div>`;
+                        });
+                        html += `</div>`;
+                    } else if (step.options && step.options.length > 0) {
                         html += `<div style="display:flex; flex-direction:column; gap:8px;">`;
                         step.options.forEach(opt => {
                             html += `<button class="game-opt-btn" data-val="${opt.replace(/"/g, '&quot;')}" style="padding:10px; background:var(--cream); border:1px solid var(--gray-300); border-radius:8px; cursor:pointer; text-align:left; transition:0.2s;">${opt}</button>`;
@@ -3341,10 +3401,44 @@ function addChatMessage(type, text) {
                     } else if (step.step_type === 'dialogue') {
                         html += `<button class="game-next-btn" style="margin-top:10px; padding:10px; background:var(--accent-teal); color:white; border:none; border-radius:8px; cursor:pointer; width:100%; font-weight:bold;">Next</button>`;
                     }
-                    
+
                     bubble.innerHTML = html;
-                    
-                    if (step.options && step.options.length > 0) {
+
+                    if (step.step_type === 'sequence' && step.sequence_items) {
+                        let selectedOrder = [];
+                        const seqContainer = bubble.querySelector(`#seq-${currentStep}`);
+                        const items = seqContainer.querySelectorAll('.sequence-item');
+
+                        items.forEach(itemEl => {
+                            itemEl.onclick = (e) => {
+                                if (itemEl.classList.contains('selected')) return;
+                                itemEl.classList.add('selected');
+                                const val = itemEl.getAttribute('data-item');
+                                selectedOrder.push(val);
+
+                                if (selectedOrder.length === step.sequence_items.length) {
+                                    let isCorrect = true;
+                                    for (let i = 0; i < selectedOrder.length; i++) {
+                                        if (selectedOrder[i] !== step.correct_sequence[i]) {
+                                            isCorrect = false;
+                                            break;
+                                        }
+                                    }
+                                    if (isCorrect) {
+                                        seqContainer.style.borderColor = 'var(--risk-low)';
+                                        setTimeout(() => { currentStep++; renderStep(); }, 1000);
+                                    } else {
+                                        seqContainer.style.borderColor = 'var(--risk-high)';
+                                        setTimeout(() => {
+                                            selectedOrder = [];
+                                            items.forEach(i => i.classList.remove('selected'));
+                                            seqContainer.style.borderColor = 'transparent';
+                                        }, 800);
+                                    }
+                                }
+                            };
+                        });
+                    } else if (step.options && step.options.length > 0) {
                         bubble.querySelectorAll('.game-opt-btn').forEach(btn => {
                             btn.onclick = (e) => {
                                 const val = e.target.getAttribute('data-val');
@@ -3372,9 +3466,9 @@ function addChatMessage(type, text) {
                         };
                     }
                 }
-                
+
                 renderStep();
-                
+
                 const textBefore = text.split(/```json|\{/)[0].trim();
                 if (textBefore) {
                     const txtBubble = document.createElement('div');
@@ -3382,7 +3476,7 @@ function addChatMessage(type, text) {
                     txtBubble.innerHTML = formatChatMarkdown(textBefore);
                     msgDiv.appendChild(txtBubble);
                 }
-                
+
                 msgDiv.appendChild(bubble);
                 chatElems.messages.appendChild(msgDiv);
                 chatElems.messages.scrollTop = chatElems.messages.scrollHeight;
@@ -3453,7 +3547,7 @@ async function toggleRecording() {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             mediaRecorder = new MediaRecorder(stream);
             mediaRecorder.ondataavailable = e => {
-                if(e.data.size > 0) audioChunks.push(e.data);
+                if (e.data.size > 0) audioChunks.push(e.data);
             };
             mediaRecorder.onstop = sendAudioMessage;
             mediaRecorder.start();
@@ -3477,7 +3571,7 @@ async function toggleRecording() {
 async function sendAudioMessage() {
     const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
     audioChunks = [];
-    
+
     addTypingIndicator();
     setChatStatus('Transcribing...');
 
@@ -3490,24 +3584,24 @@ async function sendAudioMessage() {
             method: 'POST',
             body: formData
         });
-        
+
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        
+
         const data = await response.json();
         removeTypingIndicator();
-        
-        // Show user's transcribed audio as their chat bubble
+
         addChatMessage('user', `🎤 <i>${data.transcript}</i>`);
-        
-        // Show AI response
         addChatMessage('ai', data.response);
-        
+
+        // PLAY TTS AUDIO IF RECEIVED
+        if (data.audio_base64) playAudioBase64(data.audio_base64);
+
         if (data.points_update) {
             updatePaatiScoreboard(data.new_points, data.new_level, data.new_kurals);
         }
-        
+
         setChatStatus('Online');
-        
+
     } catch (error) {
         console.error('Audio Chat error:', error);
         removeTypingIndicator();
@@ -6434,6 +6528,57 @@ input:checked+.sim-slider-round:before {
     100% { box-shadow: 0 0 0 0 rgba(211, 84, 0, 0); }
 }
 
+/* ============================================
+   Fullscreen Chat & Sequence Puzzle UI
+   ============================================ */
+.chat-panel.fullscreen {
+    width: 100vw !important;
+    height: 100vh !important;
+    bottom: 0 !important;
+    right: 0 !important;
+    border-radius: 0 !important;
+    max-height: 100vh !important;
+    z-index: 10000;
+}
+
+.chat-panel.fullscreen .chat-messages {
+    max-height: calc(100vh - 140px);
+}
+
+.sequence-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 15px 0;
+    padding: 10px;
+    border-radius: 8px;
+    transition: border-color 0.3s;
+    border: 2px solid transparent;
+}
+
+.sequence-item {
+    background: var(--cream);
+    border: 1px solid var(--gray-300);
+    padding: 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: center;
+    user-select: none;
+    transition: all 0.2s ease;
+    font-weight: 500;
+}
+
+.sequence-item:hover {
+    border-color: var(--black);
+}
+
+.sequence-item.selected {
+    background: var(--accent-teal);
+    color: white;
+    border-color: var(--accent-teal);
+    transform: scale(0.98);
+}
+
 test_qa.py:
 import requests
 import time
@@ -6655,6 +6800,1343 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+tts.txt:
+---
+title: Text-to-Speech Rest API
+description: >-
+  Real-time conversion of text into speech using customizable voices. Instant
+  audio generation with multiple voice options and various audio formats for
+  Indian languages.
+canonical-url: 'https://docs.sarvam.ai/api-reference-docs/text-to-speech/api/rest-api'
+'og:title': Text-to-Speech REST API - Instant Voice Synthesis by Sarvam AI
+'og:description': >-
+  Convert text to speech instantly with Sarvam AI's REST API. Multiple voice
+  options, customizable parameters, and various audio formats for Indian
+  languages.
+'og:type': article
+'og:site_name': Sarvam AI Developer Documentation
+'og:image':
+  type: url
+  value: >-
+    https://res.cloudinary.com/dvcb20x9a/image/upload/v1743510800/image_3_rpnrug.png
+'og:image:width': 1200
+'og:image:height': 630
+'twitter:card': summary_large_image
+'twitter:title': Text-to-Speech REST API - Instant Voice Synthesis by Sarvam AI
+'twitter:description': >-
+  Convert text to speech instantly with Sarvam AI's REST API. Multiple voice
+  options, customizable parameters, and various audio formats for Indian
+  languages.
+'twitter:image':
+  type: url
+  value: >-
+    https://res.cloudinary.com/dvcb20x9a/image/upload/v1743510800/image_3_rpnrug.png
+'twitter:site': '@SarvamAI'
+---
+Provides a synchronous REST endpoint where a POST request with text returns base64-encoded audio as response.
+
+**Common use cases:**
+- **Story narration** — Generate expressive audio for audiobooks and narratives
+- **Podcast generation** — Create natural-sounding voiceovers for episodes at scale
+- **Content creation** — Add voice to blogs, articles, and social media posts
+- **E-learning** — Build multilingual course material with clear pronunciation
+
+## What You Can Do
+
+<CardGroup cols={3}>
+  <Card title="30+ Voices" icon="users">
+    Pick from male and female speakers — each with distinct tone and style. <br/>
+    Pass the `speaker` param to switch instantly.
+  </Card>
+
+  <Card title="11 Languages (10 Indian + English)" icon="language">
+    Hindi, Bengali, Tamil, Telugu, Kannada, Malayalam, Marathi, Gujarati, Punjabi, Odia, and English (Indian accent). 
+    <br/>Set via `target_language_code`.
+  </Card>
+
+  <Card title="Up to 2500 Characters" icon="file-lines">
+    Send long-form text in a single request (v3). No need to chunk or paginate your input.
+  </Card>
+
+  <Card title="Pace Control" icon="gauge">
+    Speed up or slow down speech with the `pace` parameter — range `0.5` to `2.0` for v3.
+  </Card>
+
+  <Card title="Flexible Sample Rates" icon="wave-square">
+    8kHz to 48kHz output. Higher rates (32k, 44.1k, 48k) available in **v3 REST API only**. Default: 24kHz.
+  </Card>
+
+  <Card title="Multiple Audio Formats" icon="file-audio">
+    Response is base64-encoded. Supports WAV, MP3, Linear16, Mulaw, Alaw, Opus, FLAC, and AAC.
+  </Card>
+</CardGroup>
+
+## Model: Bulbul v3
+
+Bulbul v3 is purpose-built for Indian languages and accents. It handles code-mixed text (e.g., Hinglish), number normalization, and natural prosody out of the box — with minimal preprocessing needed.
+
+## Text to Speech Features
+
+<Tabs>
+  <Tab title="Basic Synthesis">
+    <div className="mb-8">
+      <h3>Basic Text to Speech Synthesis</h3>
+      <p>
+        Convert text to natural-sounding speech with high quality. Features include:
+      </p>
+      <ul>
+        <li>Multiple voice options</li>
+        <li>Support for Indian languages</li>
+        <li>Natural prosody and intonation</li>
+        <li>High-quality audio output</li>
+      </ul>
+    </div>
+    <CodeGroup>
+      <CodeBlock title="Python" active>
+```python
+from sarvamai import SarvamAI
+from sarvamai.play import save
+
+client = SarvamAI(api_subscription_key="YOUR_SARVAM_API_KEY")
+# Convert text to speech
+audio = client.text_to_speech.convert(
+    target_language_code="en-IN",
+    text="Welcome to Sarvam AI!",
+    model="bulbul:v3",
+    speaker="shubh"
+)
+save(audio, "output1.wav")
+```
+      </CodeBlock>
+      <CodeBlock title="JavaScript">
+```javascript
+
+const client = new SarvamAIClient({
+  apiSubscriptionKey: "YOUR_SARVAM_API_KEY"
+});
+
+const response = await client.textToSpeech.convert({
+  text: "Welcome to Sarvam AI!",
+  model: "bulbul:v3",
+  speaker: "shubh",
+  target_language_code: "en-IN"
+});
+
+// Handle audio data
+console.log(response.audios);
+```
+      </CodeBlock>
+      <CodeBlock title="cURL">
+```bash
+curl -X POST https://api.sarvam.ai/text-to-speech \
+  -H "api-subscription-key: <YOUR_SARVAM_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Welcome to Sarvam AI!",
+    "target_language_code": "en-IN",
+    "speaker": "shubh",
+    "model": "bulbul:v3"
+  }'
+```
+      </CodeBlock>
+    </CodeGroup>
+
+  </Tab>
+
+  <Tab title="Voice Selection">
+    <div className="mb-8">
+      <h3>Available Voices</h3>
+      <p>
+        Choose from 30+ natural-sounding voices for different use cases and languages.
+      </p>
+      <CardGroup cols={2}>
+        <Card title="Bulbul v3 Voices (30+)">
+          **Male:** Shubh (default), Aditya, Rahul, Rohan, Amit, Dev, Ratan, Varun, Manan, Sumit, Kabir, Aayan, Ashutosh, Advait, Anand, Tarun, Sunny, Mani, Gokul, Vijay, Mohit, Rehan, Soham
+
+          **Female:** Ritu, Priya, Neha, Pooja, Simran, Kavya, Ishita, Shreya, Roopa, Tanya, Shruti, Suhani, Kavitha, Rupali
+        </Card>
+        <Card title="Bulbul v2 Voices">
+          **Female:** Anushka (default), Manisha, Vidya, Arya
+
+          **Male:** Abhilash, Karun, Hitesh
+        </Card>
+      </CardGroup>
+    </div>
+    <CodeGroup>
+      <CodeBlock title="Python" active>
+```python
+
+from sarvamai import SarvamAI
+
+client = SarvamAI(api_subscription_key="YOUR_SARVAM_API_KEY")
+
+response = client.text_to_speech.convert(
+    text="Welcome to Sarvam AI!",
+    model="bulbul:v3",
+    target_language_code="en-IN",
+    speaker="shubh"
+)
+
+with open("output.wav", "wb") as f:
+    f.write(base64.b64decode("".join(response.audios)))
+```
+      </CodeBlock>
+      <CodeBlock title="JavaScript">
+```javascript
+
+async function convertTextToSpeech() {
+  const client = new SarvamAIClient({
+    apiSubscriptionKey: "YOUR_SARVAM_API_KEY"
+  });
+
+  const response = await client.textToSpeech.convert({
+    text: "Hello, how are you?",
+    target_language_code: "hi-IN",
+    model: "bulbul:v3",
+    speaker: "shubh"  
+  });
+
+  console.log(response);
+}
+
+convertTextToSpeech();
+```
+      </CodeBlock>
+      <CodeBlock title="cURL">
+```bash
+# Generate speech with Shubh's voice
+curl -X POST https://api.sarvam.ai/text-to-speech \
+  -H "api-subscription-key: <YOUR_SARVAM_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Welcome to Sarvam AI!",
+    "target_language_code": "en-IN",
+    "speaker": "shubh",
+    "model": "bulbul:v3"
+  }'
+
+# Generate speech with Priya's voice
+curl -X POST https://api.sarvam.ai/text-to-speech \
+  -H "api-subscription-key: <YOUR_SARVAM_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Welcome to Sarvam AI!",
+    "target_language_code": "en-IN",
+    "speaker": "priya",
+    "model": "bulbul:v3"
+  }'
+
+# Generate speech with Roopa's voice
+curl -X POST https://api.sarvam.ai/text-to-speech \
+  -H "api-subscription-key: <YOUR_SARVAM_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Welcome to Sarvam AI!",
+    "target_language_code": "en-IN",
+    "speaker": "roopa",
+    "model": "bulbul:v3"
+}'
+```
+      </CodeBlock>
+    </CodeGroup>
+
+  </Tab>
+
+  <Tab title="Advanced Options">
+    <div className="mb-8">
+      <h3>Speech Customization</h3>
+      <p>
+        Fine-tune the speech output with various parameters:
+      </p>
+      <ul>
+        <li>Adjust speech rate (pace)</li>
+        <li>Configure audio quality (sample rate)</li>
+      </ul>
+    </div>
+    <CodeGroup>
+      <CodeBlock title="Python" active>
+```python
+
+from sarvamai import SarvamAI
+
+client = SarvamAI(
+    api_subscription_key="YOUR_SARVAM_API_KEY"
+)
+
+audio = client.text_to_speech.convert(
+    text="Welcome to Sarvam AI!",
+    model="bulbul:v3",
+    target_language_code="en-IN",
+    speaker="shubh",
+    pace=1.2,
+    speech_sample_rate=24000
+)
+
+combined_audio = "".join(audio.audios)
+b64_file = base64.b64decode(combined_audio)
+
+with open("output1.wav", "wb") as f:
+    f.write(b64_file)
+```
+      </CodeBlock>
+      <CodeBlock title="JavaScript">
+```javascript
+
+const client = new SarvamAIClient({
+  apiSubscriptionKey: "YOUR_SARVAM_API_KEY"
+});
+
+async function generateCustomizedSpeech() {
+  const response = await client.textToSpeech.convert({
+    text: "Welcome to Sarvam AI!",
+    model: "bulbul:v3",
+    target_language_code: "en-IN",
+    speaker: "shubh",
+    pace: 1.2,
+    speech_sample_rate: 24000
+  });
+
+  // Handle the audio data
+  console.log(response);
+}
+
+generateCustomizedSpeech();
+```
+      </CodeBlock>
+      <CodeBlock title="cURL">
+```bash
+curl -X POST https://api.sarvam.ai/text-to-speech \
+  -H "api-subscription-key: <YOUR_SARVAM_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Welcome to Sarvam AI!",
+    "model": "bulbul:v3",
+    "speaker": "shubh",
+    "pace": 1.2,
+    "target_language_code": "en-IN",
+    "speech_sample_rate": 24000
+  }'
+```
+      </CodeBlock>
+    </CodeGroup>
+
+  </Tab>
+</Tabs>
+
+## API Response Format
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `request_id` | string | Unique identifier for the request |
+| `audios` | array | Base64-encoded audio files. Each element corresponds to an input text |
+
+**Supported audio formats:** WAV (default), MP3, Linear16, Mulaw, Alaw, Opus, FLAC, AAC
+
+```json
+{
+  "request_id": "20241115_12345678-1234-5678-1234-567812345678",
+  "audios": [
+    "UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAAB9AAACABAAZGF0YQAAAAA..."
+  ]
+}
+```
+
+<Accordion title="Decoding Audio Examples">
+
+**Python:**
+```python
+
+audio_base64 = response.audios[0]
+audio_bytes = base64.b64decode(audio_base64)
+
+with open("output.wav", "wb") as f:
+    f.write(audio_bytes)
+```
+
+**JavaScript:**
+```javascript
+
+const audioBase64 = response.audios[0];
+const audioBuffer = Buffer.from(audioBase64, 'base64');
+fs.writeFileSync('output.wav', audioBuffer);
+```
+
+</Accordion>
+
+## Error Responses
+
+All errors return a JSON object with an `error` field containing details about what went wrong.
+
+### Error Response Structure
+
+```json
+{
+  "error": {
+    "message": "Human-readable error description",
+    "code": "error_code_for_programmatic_handling",
+    "request_id": "unique_request_identifier"
+  }
+}
+```
+
+### Error Codes Reference
+
+| HTTP Status | Error Code | When This Happens | What To Do |
+|-------------|------------|-------------------|------------|
+| `400` | `invalid_request_error` | Missing required parameters or malformed request | Check `text` and `target_language_code` fields |
+| `403` | `invalid_api_key_error` | API key is invalid, missing, or expired | Verify your API key in the dashboard |
+| `422` | `unprocessable_entity_error` | Text too long or invalid speaker/model | Keep text under 1500 chars (v2) or 2500 chars (v3) |
+| `429` | `insufficient_quota_error` | API quota or rate limit exceeded | Wait for reset or upgrade your plan |
+| `500` | `internal_server_error` | Unexpected server error | Retry the request; contact support if persistent |
+
+### Example Error Response
+
+```json
+{
+  "error": {
+    "message": "Text exceeds maximum length of 1500 characters for bulbul:v3",
+    "code": "unprocessable_entity_error",
+    "request_id": "20241115_abc12345"
+  }
+}
+```
+
+<Accordion title="Error Handling Code Example">
+
+```python
+from sarvamai import SarvamAI
+from sarvamai.core.api_error import ApiError
+
+client = SarvamAI(api_subscription_key="YOUR_SARVAM_API_KEY")
+
+try:
+    response = client.text_to_speech.convert(
+        text="Welcome to Sarvam AI!",
+        target_language_code="en-IN",
+        speaker="shubh",
+        model="bulbul:v3"
+    )
+    # Process audio...
+except ApiError as e:
+    if e.status_code == 400:
+        print(f"Bad request: {e.body}")
+    elif e.status_code == 403:
+        print("Invalid API key. Check your credentials.")
+    elif e.status_code == 422:
+        print(f"Invalid parameters: {e.body}")
+    elif e.status_code == 429:
+        print("Rate limit exceeded. Wait and retry.")
+    else:
+        print(f"Error {e.status_code}: {e.body}")
+```
+
+</Accordion>
+
+<Note>
+  Check out our detailed [API Reference](/api-reference-docs/text-to-speech/convert) 
+  to explore Text to Speech and all available options.
+</Note>
+
+<Note>
+  Need help? Contact us on [discord](https://discord.com/invite/5rAsykttcs) for
+  guidance.
+</Note>
+
+
+---
+title: Best Practices for Writing Text for TTS
+description: >-
+  A guide to writing text that produces natural-sounding speech output with
+  Sarvam AI Bulbul.
+---
+
+A guide to writing text that produces natural-sounding speech output. Covers both text-formatting tips and model configuration recommendations for production use.
+
+---
+
+## 1. Punctuation for Pauses
+
+| Punctuation | Effect | Example |
+|-------------|--------|---------|
+| `,` (comma) | Short pause | "हाँ, मैं समझ गया" |
+| `.` (full stop) | Medium pause, sentence end | "यह Very good है।" |
+| `!` (exclamation) | Emphasis + pause | "नमस्ते!" |
+| `…` (ellipsis) | Hesitation / trailing off | "मुझे लगता है… शायद हम try कर सकते हैं" |
+| Line break | Natural pause between paragraphs | See below |
+
+**Tip:** Use `…` (ellipsis) to create a hesitation or trailing-off effect — it signals the speaker is thinking or pausing mid-thought. Use sparingly for natural results.
+
+**Tip:** Use line breaks between paragraphs for natural breathing pauses:
+```
+हमारी technology सबको समझती है।
+
+हमारा mission है कि हर Indian अपनी mother tongue में technology use कर सके।
+```
+
+---
+
+## 2. Fillers & Hesitations for Natural Speech
+
+Add fillers and hesitation markers to make speech sound conversational:
+
+| Filler | Effect | Example |
+|--------|--------|---------|
+| `um` | Thinking pause | "चाहे आप um Hindi बोलते हों" |
+| `uh` | Short hesitation | "uh, मुझे एक second दो" |
+| `hmm` | Contemplation | "hmm, यह interesting है" |
+| `like...` | Casual filler | "या like... कोई भी Indian language" |
+| `basically...` | Starting explanation | "So basically... हम India की हर language को voice देते हैं" |
+| `actually...` | Adding emphasis | "हमारी technology actually... सबको समझती है" |
+| `you know...` | Conversational connector | "you know... यह बहुत simple है" |
+| `I mean...` | Self-correction | "I mean... दूसरा option भी है" |
+
+**Combining fillers with ellipsis for natural hesitation:**
+```
+So basically… हमारा goal है कि um हर Indian language को support करें।
+I mean... यह easy नहीं है... but we're getting there.
+```
+
+---
+
+## 3. Code-Mixing (Hinglish)
+
+For natural Indian speech, mix English words where they're commonly used. This is how most urban Indians speak — the model handles it well.
+
+**Rule: Write English words in English script, Hindi words in Devanagari:**
+- ✅ "Sarvam AI में आपका स्वागत है"
+- ❌ "सरवम एआई में आपका स्वागत है"
+
+**Common code-mixed categories:**
+
+| Category | Examples |
+|----------|---------|
+| Tech terms | technology, app, website, download, update, AI |
+| Everyday words | basically, actually, like, amazing, simple |
+| Social Expressions | thank you, sorry, please, welcome |
+| Business | meeting, deadline, budget, report, feedback |
+
+**Full code-mixed examples:**
+
+```
+So basically... हम India की हर language को voice देते हैं।
+चाहे आप um Hindi बोलते हों, Tamil, Telugu, Bengali या like... कोई भी Indian language।
+
+अगर आपको koi doubt है तो please हमें contact करें।
+Meeting actually postpone हो गई है, I mean... tomorrow रखते हैं।
+```
+
+**Keep Hindi sentence structure, swap key nouns/verbs with English:**
+- "हर Indian अपनी mother tongue में technology use कर सके"
+- "आज का weather actually बहुत pleasant है"
+- "यह app basically आपकी daily life को simple बना देगा"
+
+---
+
+## 4. Avoid These
+
+| Avoid | Why | Fix |
+|-------|-----|-----|
+| Overusing `...` | Too many ellipses sound choppy | Use `…` sparingly for hesitation; prefer `,` or line breaks for regular pauses |
+| Complex Sanskrit words | May mispronounce | Use simpler Hindi |
+| Very long sentences | Unnatural breathing | Break into shorter sentences |
+
+---
+
+## 5. Language-Specific Tips
+
+### Sentence-ending punctuation
+- If a sentence **ends in Hindi or a regional language**, use `।`: `"हमारी technology सबको समझती है।"`
+  - If a sentence **ends in English**, use `.` : `"प्लान simple है, just execute."`
+
+### Writing Conventions
+- Write language names in English: Tamil, Telugu, Bengali (not तमिल, तेलुगु)
+- Keep brand names in English: Sarvam AI, Google, WhatsApp
+
+---
+
+## 6. Target Language Code
+
+The `target_language_code` parameter is **required** for every TTS request. It is primarily effective for handling language-specific processing of numbers, abbreviations, and special characters.
+
+### Supported Languages
+
+| Language    | Code    |
+|-------------|---------|
+| English     | `en-IN` |
+| Hindi       | `hi-IN` |
+| Bengali     | `bn-IN` |
+| Tamil       | `ta-IN` |
+| Telugu      | `te-IN` |
+| Kannada     | `kn-IN` |
+| Malayalam   | `ml-IN` |
+| Marathi     | `mr-IN` |
+| Gujarati    | `gu-IN` |
+| Punjabi     | `pa-IN` |
+| Odia        | `od-IN` |
+
+### Example
+
+```python
+audio = client.text_to_speech.convert(
+    text="नमस्ते! Sarvam AI में आपका स्वागत है।",
+    model="bulbul:v3",
+    target_language_code="hi-IN",  
+    speaker="shubh"
+)
+```
+
+<Note>
+  If your text contains mixed languages (e.g. Hinglish), set the `target_language_code` to the language in which you want entities (e.g numbers) in speech. 
+</Note>
+
+---
+
+## 7. Understanding the Audio Output (Base64)
+
+The TTS API returns audio data as a **base64-encoded string**. You must decode this string before saving or playing the audio file.
+
+### REST API Response
+
+The REST API returns a response with an `audios` field — an array of base64-encoded audio strings. You need to decode them:
+
+<Tabs>
+  <Tab title="Python">
+
+```python
+
+from sarvamai import SarvamAI
+
+client = SarvamAI(api_subscription_key="YOUR_SARVAM_API_KEY")
+
+audio = client.text_to_speech.convert(
+    text="नमस्ते! Sarvam AI में आपका स्वागत है।",
+    model="bulbul:v3",
+    target_language_code="hi-IN",
+    speaker="shubh"
+)
+
+# The response contains base64-encoded audio in the 'audios' field
+# Combine all audio chunks and decode from base64
+combined_audio = "".join(audio.audios)
+audio_bytes = base64.b64decode(combined_audio)
+
+with open("output.wav", "wb") as f:
+    f.write(audio_bytes)
+```
+
+  </Tab>
+
+  <Tab title="JavaScript">
+
+```javascript
+
+const client = new SarvamAIClient({
+  apiSubscriptionKey: "YOUR_SARVAM_API_KEY"
+});
+
+const response = await client.textToSpeech.convert({
+  text: "नमस्ते! Sarvam AI में आपका स्वागत है।",
+  model: "bulbul:v3",
+  targetLanguageCode: "hi-IN",
+  speaker: "shubh"
+});
+
+// The response contains base64-encoded audio
+// Decode the base64 string to a Buffer and save
+const audioBuffer = Buffer.from(response.audios.join(""), "base64");
+fs.writeFileSync("output.wav", audioBuffer);
+```
+
+  </Tab>
+
+  <Tab title="cURL">
+
+```bash
+# The API returns JSON with a base64-encoded "audios" array
+curl -X POST https://api.sarvam.ai/text-to-speech \
+  -H "api-subscription-key: <YOUR_SARVAM_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "नमस्ते! Sarvam AI में आपका स्वागत है।",
+    "model": "bulbul:v3",
+    "target_language_code": "hi-IN",
+    "speaker": "shubh"
+  }' | python3 -c "
+
+resp = json.load(sys.stdin)
+audio = base64.b64decode(''.join(resp['audios']))
+with open('output.wav', 'wb') as f:
+    f.write(audio)
+print('Saved output.wav')
+"
+```
+
+  </Tab>
+</Tabs>
+
+### Streaming API Response
+
+For the streaming (WebSocket) API, each chunk arrives as a base64-encoded audio string. Decode each chunk as it arrives:
+
+```python
+
+from sarvamai import AsyncSarvamAI, AudioOutput
+
+async def tts_stream():
+    client = AsyncSarvamAI(api_subscription_key="YOUR_SARVAM_API_KEY")
+
+    async with client.text_to_speech_streaming.connect(model="bulbul:v3") as ws:
+        await ws.configure(
+            target_language_code="hi-IN",
+            speaker="shubh"
+        )
+
+        await ws.convert("नमस्ते! Sarvam AI में आपका स्वागत है।")
+        await ws.flush()
+
+        with open("output.wav", "wb") as f:
+            async for message in ws:
+                if isinstance(message, AudioOutput):
+                    # Each chunk is base64-encoded — decode before writing
+                    audio_chunk = base64.b64decode(message.data.audio)
+                    f.write(audio_chunk)
+
+asyncio.run(tts_stream())
+```
+
+<Warning>
+  **Do not** write the raw base64 string directly to a file. The audio will be corrupted and unplayable. Always decode with `base64.b64decode()` (Python) or `Buffer.from(data, "base64")` (JavaScript) first.
+</Warning>
+
+---
+
+---
+
+## 8. Choosing the Right API Mode
+
+Bulbul v3 supports two API modes. Choosing correctly has a significant impact on latency and user experience.
+
+|  | **REST API** | **WebSocket Streaming** |
+|---|---|---|
+| **Endpoint** | `/text-to-speech` | `wss://api.sarvam.ai/v1/text-to-speech/stream` |
+| **Character limit** | 2,500 chars/call | 2,500 chars/session |
+| **Latency** | Higher — full audio returned at once | Low — audio chunks streamed in real time |
+| **Best for** | Short/pre-known text, batch, notifications | Conversational agents, IVR, LLM voice output |
+| **Output** | Complete audio file | Incremental audio chunks for progressive playback |
+| **Integrations** | Async pipelines, batch jobs | LiveKit, Pipecat, custom WebSocket clients |
+
+<Tip>
+  **For voice agent pipelines (LLM → TTS), always use WebSocket streaming.** The user perceives audio starting within milliseconds of the first chunk, dramatically improving conversational feel. REST adds a noticeable pause as full audio is generated before delivery.
+</Tip>
+
+---
+
+## 9. Voice Parameter Tuning — Pace & Temperature
+
+Two parameters give you fine-grained control over how Bulbul v3 sounds. Getting these right is the single most impactful tuning lever available to developers.
+
+### Pace (Range: 0.5 – 2.0)
+
+`pace` controls the speaking rate relative to the model's natural speed. `1.0` is native speed.
+
+| Pace Value | Effect | Recommended Use Case |
+|------------|--------|---------------------|
+| 0.5 – 0.7 | Very slow, deliberate | Accessibility tools, elderly users, pronunciation guides |
+| 0.8 – 0.9 | Relaxed, measured | EdTech narration, meditation/wellness apps, tutorials |
+| **1.0** | **Natural speed (default)** | **Conversational agents, general-purpose TTS** |
+| 1.1 | Slightly brisk | Notifications, news briefings, professional IVR |
+| 1.2 – 1.5 | Fast, energetic | Quick summaries, high-engagement marketing audio |
+| 1.6 – 2.0 | Very fast | Screen readers, speed-listening (use with caution) |
+
+**Default recommendation:** Start at `1.0` (natural) or `1.1` (brisk, professional contexts). Avoid values above `1.5` unless specifically building speed-listening features.
+
+### Temperature (Range: 0.01 – 1.0)
+
+`temperature` controls expressiveness and prosodic variation. Lower values produce consistent, predictable delivery; higher values introduce more natural pitch variation and emotional colour.
+
+| Temperature | Character | Recommended Use Case |
+|-------------|-----------|---------------------|
+| 0.01 – 0.2 | Flat, highly consistent | Screen readers, accessibility, compliance narration |
+| 0.3 – 0.5 | Controlled, professional | IVR menus, BFSI notifications, status updates |
+| 0.6 | Balanced; natural yet reliable | Conversational agents, EdTech, general purpose |
+| 0.7 – 0.8 | Expressive, warm, conversational | Voice personas, companion apps, storytelling |
+| 0.9 – 1.0 | Highly expressive, variable | Entertainment, creative content, character voices |
+
+---
+
+## 10. Speaker Selection by Language
+
+Not all speakers perform equally across all languages. Always use the language-specific recommendations below rather than arbitrary speaker selection.
+
+| Language | Code | Recommended Male | Recommended Female |
+|----------|------|------------------|--------------------|
+| English | `en-IN` | ratan | ishita |
+| Hindi | `hi-IN` | shubh, ashutosh | priya, suhani |
+| Telugu | `te-IN` | shubh, ratan | neha, priya |
+| Kannada | `kn-IN` | shubh, ratan | neha, ishita |
+| Bengali | `bn-IN` | rehan | roopa, suhani |
+| Tamil | `ta-IN` | ratan, rohan | ishita, ritu |
+| Odia | `od-IN` | shubh | ritu, pooja |
+| Malayalam | `ml-IN` | shubh | pooja |
+| Marathi | `mr-IN` | ratan | priya, ritu |
+| Punjabi | `pa-IN` | mani | roopa, suhani |
+| Gujarati | `gu-IN` | ratan | priya, ritu |
+
+**Top picks:** `priya` & `ishita` (best female, excellent across Hindi, Telugu, Kannada, Tamil, Marathi, Gujarati, English) · `mani` (best male overall, Punjabi) · `shubh` (best male for hi, te, kn, od, ml) · `ratan` (best male for en, te, kn, ta, mr, gu).
+
+<Warning>
+  **Varun** has a deep, dramatic villain/suspense character voice. He is **not** suitable as a neutral default. Reserve `varun` exclusively for thriller, drama, or suspense content.
+</Warning>
+
+---
+
+## 11. Use-Case Quick Reference
+
+Recommended parameter and speaker combinations for common production scenarios:
+
+| Use Case | Language | Speaker(s) | Pace | Temperature | Format | Sample Rate |
+|----------|----------|------------|------|-------------|--------|-------------|
+| Voice Agent (chat) | hi-IN | priya / shubh | 1.0 | 0.6 | PCM | 16 kHz |
+| IVR / Telephony | hi-IN, en-IN | ratan / ishita | 1.1 | 0.4 | MULAW | 8 kHz |
+| EdTech Narration | hi-IN, ta-IN | shubh / ishita | 0.9 | 0.6 | MP3 | 22 kHz |
+| BFSI Notification | hi-IN, en-IN | ashutosh / ratan | 1.1 | 0.3 | MP3 | 22 kHz |
+| Wellness / Meditation | hi-IN | priya / suhani | 0.75 | 0.5 | MP3 | 24 kHz |
+| News Briefing | hi-IN, en-IN | ratan / ishita | 1.2 | 0.5 | MP3 | 22 kHz |
+| Storytelling | hi-IN, bn-IN | shubh / roopa | 0.9 | 0.8 | WAV | 24 kHz |
+| Thriller / Suspense | hi-IN | varun | 0.9 | 0.8 | MP3 | 24 kHz |
+
+---
+
+## 12. Output Format Recommendations
+
+| Format | Best For | Notes |
+|--------|----------|-------|
+| `mp3` | Web, mobile, content delivery | Good compression; universal compatibility |
+| `wav` | Post-processing, archival | Lossless; larger file size |
+| `aac` | iOS apps, streaming | Better quality than MP3 at same bitrate |
+| `opus` | WebRTC, low-bandwidth streaming | Excellent for real-time voice; very low latency |
+| `flac` | High-fidelity archival | Lossless compression |
+| `linear16` | Real-time playback, voice agents | Raw samples; lowest overhead for streaming |
+| `mulaw` | PSTN telephony, legacy IVR | 8 kHz; standard G.711 telephony codec |
+| `alaw` | European telephony systems | 8 kHz; G.711 A-law variant |
+
+<Tip>
+  For real-time WebSocket voice agents, use `linear16` (PCM) at 16 kHz — lowest decode overhead, integrates directly with LiveKit, Pipecat, and most audio buffers. Use `mulaw` at 8 kHz for telephony/IVR.
+</Tip>
+
+---
+
+## 13. Known Limitations
+
+| Limitation | Detail | Workaround |
+|------------|--------|------------|
+| **Character limits** | REST: 2,500 chars/call · WebSocket: 2,500 chars/session | Chunk long texts at sentence boundaries before sending |
+| **Script input (critical)** | Romanised/transliterated Indic input significantly degrades output quality — this is the most common integration mistake | Always use native script for Indic words (e.g., `"आपका order confirm हो गया है"` not `"Aapka order confirm ho gaya hai"`) |
+| **No SSML support** | Bulbul v3 does not support SSML tags for fine-grained prosody control | Use `pace` and `temperature` for coarse control; split text at natural pause points for rhythm |
+| **Speaker–language fit** | Not all speakers perform equally across all 11 languages | Always use the language-specific recommended speakers from Section 10 |
+| **High sample rates (REST only)** | 32 kHz, 44.1 kHz, and 48 kHz are available via REST API only | Use ≤ 24 kHz for WebSocket streaming |
+
+---
+
+## 14. Key Considerations
+
+- For numbers greater than 4 digits, use commas (e.g., `10,000` instead of `10000`) for correct pronunciation.
+
+
+
+---
+title: How to Set the Language
+description: Defines the language for text normalization before speech synthesis.
+---
+
+Bulbul v3 supports **11 languages (10 Indian + English)**. It is a **required** parameter — always specify it using a valid BCP-47 language code.
+
+The target_language_code parameter is required for every TTS request. It is primarily effective for handling language-specific processing of numbers, abbreviations, and special characters.
+ 
+
+### Supported Languages:
+
+| Language    | Code    |
+|-------------|---------|
+| English     | `en-IN` |
+| Hindi       | `hi-IN` |
+| Bengali     | `bn-IN` |
+| Tamil       | `ta-IN` |
+| Telugu      | `te-IN` |
+| Kannada     | `kn-IN` |
+| Malayalam   | `ml-IN` |
+| Marathi     | `mr-IN` |
+| Gujarati    | `gu-IN` |
+| Punjabi     | `pa-IN` |
+| Odia        | `od-IN` |
+
+### Example Code
+
+<Tabs>
+  <Tab title="Rest API">
+
+```python
+from sarvamai import SarvamAI
+from sarvamai.play import save
+
+# Initialize the REST client
+client = SarvamAI(api_subscription_key="YOUR_SARVAM_API_KEY")
+
+# Generate speech using REST
+audio = client.text_to_speech.convert(
+    text="Welcome to Sarvam AI!",
+    model="bulbul:v3",
+    target_language_code="en-IN" #Generating speech in English
+)
+save(audio, "output1.wav")
+
+```
+</Tab> 
+
+<Tab title="Streaming API">
+```python
+
+from sarvamai import AsyncSarvamAI, AudioOutput
+
+async def tts_stream():
+    client = AsyncSarvamAI(api_subscription_key="YOUR_SARVAM_API_KEY")
+
+    async with client.text_to_speech_streaming.connect(model="bulbul:v3") as ws:
+        await ws.configure(
+            target_language_code="hi-IN", #Generating speech in Hindi
+            speaker="shubh"
+        )
+        print("Sent configuration")
+
+        text = (
+            "भारत की संस्कृति विश्व की सबसे प्राचीन और समृद्ध संस्कृतियों में से एक है।"
+            "यह विविधता, सहिष्णुता और परंपराओं का अद्भुत संगम है, "
+            "जिसमें विभिन्न धर्म, भाषाएं, त्योहार, संगीत, नृत्य, वास्तुकला और जीवनशैली शामिल हैं।"
+        )
+
+        await ws.convert(text)
+        print("Sent text message")
+
+        await ws.flush()
+        print("Flushed buffer")
+
+        chunk_count = 0
+        with open("output.mp3", "wb") as f:
+            async for message in ws:
+                if isinstance(message, AudioOutput):
+                    chunk_count += 1
+                    audio_chunk = base64.b64decode(message.data.audio)
+                    f.write(audio_chunk)
+                    f.flush()
+
+        print(f"All {chunk_count} chunks saved to output.mp3")
+        print("Audio generation complete")
+
+        
+        if hasattr(ws, "_websocket") and not ws._websocket.closed:
+            await ws._websocket.close()
+            print("WebSocket connection closed.")
+
+if __name__ == "__main__":
+    asyncio.run(tts_stream())
+
+# --- Notebook/Colab usage ---
+# await tts_stream()
+
+```
+</Tab> 
+</Tabs>
+
+
+---
+title: How to change the speaker voice
+description: >-
+  Learn how to choose specific voices for text-to-speech output using the
+  speaker parameter. Explore Bulbul v3's 30+ natural-sounding voices for
+  different languages and use cases.
+canonical-url: 'https://docs.sarvam.ai/api-reference-docs/text-to-speech/How-to/speaker'
+'og:title': Change Speaker Voice in Text-to-Speech - Sarvam AI Bulbul Guide
+'og:description': >-
+  Customize text-to-speech output with different speaker voices using Sarvam
+  AI's Bulbul v3. 30+ natural-sounding Indian language voices.
+'og:type': article
+'og:site_name': Sarvam AI Developer Documentation
+'og:image':
+  type: url
+  value: >-
+    https://res.cloudinary.com/dvcb20x9a/image/upload/v1743510800/image_3_rpnrug.png
+'og:image:width': 1200
+'og:image:height': 630
+'twitter:card': summary_large_image
+'twitter:title': Change Speaker Voice in Text-to-Speech - Sarvam AI Bulbul Guide
+'twitter:description': >-
+  Customize text-to-speech output with different speaker voices using Sarvam
+  AI's Bulbul v3. 30+ natural-sounding Indian language voices.
+'twitter:image':
+  type: url
+  value: >-
+    https://res.cloudinary.com/dvcb20x9a/image/upload/v1743510800/image_3_rpnrug.png
+'twitter:site': '@SarvamAI'
+---
+
+The `speaker` parameter lets you choose a specific voice for the speech output.  
+
+<Note>Speaker names are case-sensitive and must be lowercase (e.g., `shubh`, not `Shubh`).</Note>
+
+### **Speaker Selection** 
+
+Specify the speaker using the `speaker` parameter in your request. It is an optional parameter — if omitted, the API uses the default voice (**shubh** for bulbul:v3, **anushka** for bulbul:v2).
+
+### Available Voices — Bulbul v3
+
+Bulbul v3 offers 30+ natural-sounding voices:
+
+**Male:** shubh (default), aditya, rahul, rohan, amit, dev, ratan, varun, manan, sumit, kabir, aayan, ashutosh, advait, anand, tarun, sunny, mani, gokul, vijay, mohit, rehan, soham
+
+**Female:** ritu, priya, neha, pooja, simran, kavya, ishita, shreya, roopa, tanya, shruti, suhani, kavitha, rupali
+
+### Production-Recommended Speakers (Bulbul v3)
+
+Speakers are evaluated by **Critical Error Rate (CER)** — the percentage of words with critical pronunciation errors. Lower CER = higher reliability.
+
+| Tier | CER Range | Recommendation |
+|------|-----------|----------------|
+| **Tier 1 — Excellent** | ≤ 0.20% | First choice for all production use |
+| **Tier 2 — Good** | 0.21–0.40% | Safe for production use |
+| **Tier 3 — Moderate** | 0.41–0.60% | Acceptable; test per language before deploying |
+
+| Speaker | Gender | CER | Quality Tier |
+|---------|--------|-----|--------------|
+| mani | Male | 0.00% | Tier 1 — Excellent |
+| priya | Female | 0.13% | Tier 1 — Excellent |
+| ishita | Female | 0.13% | Tier 1 — Excellent |
+| varun | Male | 0.06% | Tier 1 — Special Use ★ |
+| roopa | Female | 0.26% | Tier 2 — Good |
+| shubh | Male | 0.30% | Tier 2 — Good |
+| pooja | Female | 0.30% | Tier 2 — Good |
+| sunny | Male | 0.33% | Tier 2 — Good |
+| ratan | Male | 0.33% | Tier 2 — Good |
+| rehan | Male | 0.33% | Tier 2 — Good |
+| ashutosh | Male | 0.40% | Tier 2 — Good |
+| amit | Male | 0.40% | Tier 2 — Good |
+| rahul | Male | 0.40% | Tier 2 — Good |
+| aditya | Male | 0.46% | Tier 3 — Moderate |
+| simran | Female | 0.46% | Tier 3 — Moderate |
+| suhani | Female | 0.46% | Tier 3 — Moderate |
+| shreya | Female | 0.46% | Tier 3 — Moderate |
+| anand | Male | 0.46% | Tier 3 — Moderate |
+| rupali | Female | 0.50% | Tier 3 — Moderate |
+| neha | Female | 0.53% | Tier 3 — Moderate |
+| ritu | Female | 0.53% | Tier 3 — Moderate |
+| manan | Male | 0.53% | Tier 3 — Moderate |
+| dev | Male | 0.60% | Tier 3 — Moderate |
+
+<Warning>
+  **★ Note on varun:** Despite having a very low CER (0.06%), `varun` carries a deep, dramatic villain/suspense character. He is **not** suitable as a neutral default. Reserve `varun` exclusively for thriller, drama, or suspense content.
+</Warning>
+
+### Recommended Speakers by Language
+
+Not all speakers perform equally across all languages. Always use these language-specific picks over arbitrary selection:
+
+| Language | Code | Recommended Male | Recommended Female |
+|----------|------|------------------|--------------------|
+| English | `en-IN` | ratan | ishita |
+| Hindi | `hi-IN` | shubh, ashutosh | priya, suhani |
+| Telugu | `te-IN` | shubh, ratan | neha, priya |
+| Kannada | `kn-IN` | shubh, ratan | neha, ishita |
+| Bengali | `bn-IN` | rehan | roopa, suhani |
+| Tamil | `ta-IN` | ratan, rohan | ishita, ritu |
+| Odia | `od-IN` | shubh | ritu, pooja |
+| Malayalam | `ml-IN` | shubh | pooja |
+| Marathi | `mr-IN` | ratan | priya, ritu |
+| Punjabi | `pa-IN` | mani | roopa, suhani |
+| Gujarati | `gu-IN` | ratan | priya, ritu |
+
+**Top picks:** `priya` & `ishita` (best female — use across Hindi, Telugu, Kannada, Tamil, Marathi, Gujarati, English) · `mani` (best male overall, Punjabi) · `shubh` (best male for hi, te, kn, od, ml) · `ratan` (best male for en, te, kn, ta, mr, gu).
+
+### Available Voices — Bulbul v2
+
+#### Female Voices
+- **anushka:** Clear and professional  
+- **manisha:** Warm and friendly  
+- **vidya:** Articulate and precise
+- **arya:** Young and energetic  
+
+#### Male Voices
+- **abhilash:** Deep and authoritative  
+- **karun:** Natural and conversational  
+- **hitesh:** Professional and engaging  
+
+Listen to voice samples on our dashboard: [Voice Samples – Sarvam TTS](https://dashboard.sarvam.ai/text-to-speech)
+
+### Example Code
+
+<Tabs>
+  <Tab title="Rest API">
+
+```python
+from sarvamai import SarvamAI
+from sarvamai.play import save
+
+# Initialize the REST client
+client = SarvamAI(api_subscription_key="YOUR_SARVAM_API_KEY")
+
+# Generate speech using REST
+audio = client.text_to_speech.convert(
+    text="Welcome to Sarvam AI!",
+    model="bulbul:v3",
+    target_language_code="en-IN",
+    speaker="shubh"
+)
+save(audio, "output1.wav")
+
+```
+</Tab> 
+
+<Tab title="Streaming API">
+```python
+
+from sarvamai import AsyncSarvamAI, AudioOutput
+
+async def tts_stream():
+    client = AsyncSarvamAI(api_subscription_key="YOUR_SARVAM_API_KEY")
+
+    async with client.text_to_speech_streaming.connect(model="bulbul:v3") as ws:
+        await ws.configure(
+            target_language_code="hi-IN", 
+            speaker="shubh"
+        )
+        print("Sent configuration")
+
+        long_text = (
+            "भारत की संस्कृति विश्व की सबसे प्राचीन और समृद्ध संस्कृतियों में से एक है।"
+            "यह विविधता, सहिष्णुता और परंपराओं का अद्भुत संगम है, "
+            "जिसमें विभिन्न धर्म, भाषाएं, त्योहार, संगीत, नृत्य, वास्तुकला और जीवनशैली शामिल हैं।"
+        )
+
+        await ws.convert(long_text)
+        print("Sent text message")
+
+        await ws.flush()
+        print("Flushed buffer")
+
+        chunk_count = 0
+        with open("output.mp3", "wb") as f:
+            async for message in ws:
+                if isinstance(message, AudioOutput):
+                    chunk_count += 1
+                    audio_chunk = base64.b64decode(message.data.audio)
+                    f.write(audio_chunk)
+                    f.flush()
+
+        print(f"All {chunk_count} chunks saved to output.mp3")
+        print("Audio generation complete")
+
+        
+        if hasattr(ws, "_websocket") and not ws._websocket.closed:
+            await ws._websocket.close()
+            print("WebSocket connection closed.")
+
+if __name__ == "__main__":
+    asyncio.run(tts_stream())
+
+# --- Notebook/Colab usage ---
+# await tts_stream()
+
+```
+</Tab> 
+</Tabs>
+
+
+---
+title: How to set the audio format for output using `output_audio_codec`
+description: Choose the audio format for TTS streaming output.
+---
+
+The `output_audio_codec` parameter defines the **audio format** for the streamed speech output. It must be set in the `config` message before sending any text.
+
+If not specified, the audio is streamed in base64-encoded MPEG format by default.
+
+Choosing the appropriate codec can impact:
+- **Audio quality**
+- **File size**
+- **Playback compatibility**
+- **Latency**
+
+### **Supported Audio Codecs**
+
+| Codec      | Description                                  |
+|------------|----------------------------------------------|
+| `mp3`      | MPEG Layer-3 – widely supported, good compression     |
+| `aac`      | Advanced Audio Coding – good compression, high quality |
+| `alaw`     | 8-bit logarithmic PCM – used in telephony    |
+| `flac`     | Lossless format – high fidelity audio        |
+| `linear16` | Uncompressed PCM audio – large size, accurate |
+| `mulaw`    | Similar to alaw, used in telephony           |
+| `opus`    | Optimized for speech and streaming           |
+| `wav`      | Standard uncompressed format, large files    |
+---
+### Example Code
+
+<Tabs>
+  <Tab title="Rest API">
+
+```python
+from sarvamai import SarvamAI
+from sarvamai.play import save
+
+# Initialize the REST client
+client = SarvamAI(api_subscription_key="YOUR_SARVAM_API_KEY")
+
+# Generate speech using REST
+audio = client.text_to_speech.convert(
+    text="Welcome to Sarvam AI!",
+    model="bulbul:v3",
+    target_language_code="en-IN",
+    output_audio_codec="aac"
+)
+save(audio, "output1.aac")
+
+```
+</Tab> 
+
+<Tab title="Streaming API">
+```python
+
+from sarvamai import AsyncSarvamAI, AudioOutput
+
+async def tts_stream():
+    client = AsyncSarvamAI(api_subscription_key="YOUR_SARVAM_API_KEY")
+
+    async with client.text_to_speech_streaming.connect(model="bulbul:v3") as ws:
+        await ws.configure(
+            target_language_code="hi-IN", 
+            speaker="shubh",
+            output_audio_codec = "aac"
+        )
+        print("Sent configuration")
+
+        text = (
+            "भारत की संस्कृति विश्व की सबसे प्राचीन और समृद्ध संस्कृतियों में से एक है।"
+            "यह विविधता, सहिष्णुता और परंपराओं का अद्भुत संगम है, "
+            "जिसमें विभिन्न धर्म, भाषाएं, त्योहार, संगीत, नृत्य, वास्तुकला और जीवनशैली शामिल हैं।"
+        )
+        await ws.convert(text)
+        print("Sent text message")
+
+        await ws.flush()
+        print("Flushed buffer")
+
+        chunk_count = 0
+        with open("output.aac", "wb") as f:
+            async for message in ws:
+                if isinstance(message, AudioOutput):
+                    chunk_count += 1
+                    audio_chunk = base64.b64decode(message.data.audio)
+                    f.write(audio_chunk)
+                    f.flush()
+
+        print(f"All {chunk_count} chunks saved to output.aac")
+        print("Audio generation complete")
+
+        
+        if hasattr(ws, "_websocket") and not ws._websocket.closed:
+            await ws._websocket.close()
+            print("WebSocket connection closed.")
+
+if __name__ == "__main__":
+    asyncio.run(tts_stream())
+
+# --- Notebook/Colab usage ---
+# await tts_stream()
+
+```
+</Tab> 
+</Tabs>
+
+---
+title: How to set `output_audio_bitrate`
+description: Control the quality and size of the synthesized audio output.
+---
+
+The `output_audio_bitrate` parameter defines the **bitrate** of the audio stream in kilobits per second. It controls the **audio quality**, **file size**, and **streaming performance**.
+
+<Note>
+  This parameter is available only in the **WebSocket Streaming API**. It is not supported in the REST API.
+</Note>
+
+This parameter is optional. If not provided, the system uses the **default value `128k`**.
+
+### Supported Bitrates
+
+| Value   | Description                                |
+|---------|--------------------------------------------|
+| `32k`   | Very low bitrate, smaller file, lower quality |
+| `64k`   | Low bitrate, suitable for speech            |
+| `96k`   | Medium quality                              |
+| `128k`  | Default – good balance of quality and size |
+| `192k`  | High quality, larger audio files            |
+
+---
+
+### **Example Streaming API code**
+
+```python 
+
+from sarvamai import AsyncSarvamAI, AudioOutput
+
+async def tts_stream():
+    client = AsyncSarvamAI(api_subscription_key="YOUR_SARVAM_API_KEY")
+
+    async with client.text_to_speech_streaming.connect(model="bulbul:v3") as ws:
+        await ws.configure(
+            target_language_code="hi-IN", 
+            speaker="shubh",
+            output_audio_bitrate= "128k"
+        )
+        print("Sent configuration")
+
+        text = (
+            "भारत की संस्कृति विश्व की सबसे प्राचीन और समृद्ध संस्कृतियों में से एक है।"
+            "यह विविधता, सहिष्णुता और परंपराओं का अद्भुत संगम है, "
+            "जिसमें विभिन्न धर्म, भाषाएं, त्योहार, संगीत, नृत्य, वास्तुकला और जीवनशैली शामिल हैं।"
+        )
+
+        await ws.convert(text)
+        print("Sent text message")
+
+        await ws.flush()
+        print("Flushed buffer")
+
+        chunk_count = 0
+        with open("output.mp3", "wb") as f:
+            async for message in ws:
+                if isinstance(message, AudioOutput):
+                    chunk_count += 1
+                    audio_chunk = base64.b64decode(message.data.audio)
+                    f.write(audio_chunk)
+                    f.flush()
+
+        print(f"All {chunk_count} chunks saved to output.mp3")
+        print("Audio generation complete")
+
+        
+        if hasattr(ws, "_websocket") and not ws._websocket.closed:
+            await ws._websocket.close()
+            print("WebSocket connection closed.")
+
+if __name__ == "__main__":
+    asyncio.run(tts_stream())
+
+# --- Notebook/Colab usage ---
+# await tts_stream()
+
+```
+
+
 
 
 tmp\placement_chat.db:

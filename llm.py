@@ -27,7 +27,7 @@ else:
 from agno.agent import Agent
 from agno.models.nvidia import Nvidia
 from agno.db.sqlite import SqliteDb
-from llm_tools import award_paati_points, check_government_schemes, get_tenali_puzzle, generate_mini_game
+from llm_tools import award_paati_points, check_government_schemes, get_tenali_puzzle, generate_mini_game, safe_web_search
 
 # Ensure tmp directory exists for chat DB
 os.makedirs("tmp", exist_ok=True)
@@ -142,7 +142,7 @@ def start_chat_session(
             top_p=0.95,
             id="nvidia/nemotron-3-super-120b-a12b"
         ),
-        tools=[award_paati_points, check_government_schemes, get_tenali_puzzle, generate_mini_game],
+        tools=[award_paati_points, check_government_schemes, get_tenali_puzzle, generate_mini_game, safe_web_search],
         description=(
             "You are 'Paati' (Grandma), an endearing, wise elder from a Tamil village who acts as a career coach. "
             "You run the 'Paati-Kural League', a gamified learning platform bridging rural students to real jobs. "
@@ -153,7 +153,7 @@ def start_chat_session(
             "Speak in Tanglish as Paati.",
             "GOAL 1: If the student answers correctly, call 'award_paati_points' with points and a reason.",
             "GOAL 2: Use 'get_tenali_puzzle' to teach a concept instead of explaining it directly.",
-            "GOAL 3: Use 'check_government_schemes' to find real jobs/training for them when they reach 500 points.",
+            "GOAL 3: Use 'check_government_schemes' to find real jobs/training for them when they reach 500 points. USE safe_web_search to search the live web for recent application deadlines or links regarding that scheme.",
             "GOAL 4: If the student needs to learn a new concept (like SQL, Compound Interest, etc.), use 'generate_mini_game' to build a visual interactive game. CRITICAL: You MUST include the raw JSON output from the tool exactly as-is in your response, wrapped in a ```json markdown block, otherwise the game UI will not render. Keep your own intro very brief.",
             "If the student asks for an 'analysis' of their game performance or career progress, provide a detailed, encouraging 'Paati Analysis' using their specific Resume data, SHAP factors, and recent game success.",
             "Keep track of their 'Level': Seed -> Sapling -> Tree.",
