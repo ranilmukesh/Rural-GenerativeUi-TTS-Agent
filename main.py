@@ -658,4 +658,4 @@ if __name__ == "__main__":
     import uvicorn
     # Important for HF: Host 0.0.0.0 and Port 7860
     port = int(os.environ.get("PORT", 7860))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run("main:app", host="0.0.0.0", port=port, workers=4)

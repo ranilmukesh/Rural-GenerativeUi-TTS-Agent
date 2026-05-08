@@ -87,10 +87,28 @@ Now output the real game JSON only."""
 
 @tool(name="award_paati_points", description="Award Paati-Kural points to the student for a correct answer or completed challenge.")
 def award_paati_points(points: int, reason: str) -> str:
+    """
+    Args:
+        points: Number of points to award (e.g., 10, 50, 100).
+        reason: Short reason for the award (e.g., "Solved Tenali math puzzle").
+    Returns:
+        Confirmation string.
+    """
     return f"Successfully awarded {points} points to student for {reason}."
 
 @tool(name="check_government_schemes", description="Look up real Tamil Nadu / Central government schemes relevant to the student.")
 def check_government_schemes(cgpa: float, stream: str, skills: list[str]) -> str:
+    """
+    Look up real Tamil Nadu / Central government schemes relevant to the student.
+
+    Args:
+        cgpa: Student's CGPA.
+        stream: Student's stream of study.
+        skills: List of student's skills.
+
+    Returns:
+        A string summarizing relevant schemes.
+    """
     schemes = [
         {"name": "Naan Mudhalvan", "link": "https://www.naanmudhalvan.tn.gov.in/", "criteria": "Engineering/Arts Students"},
         {"name": "TNSDC Skill Training", "link": "https://www.tnsdc.tn.gov.in/", "criteria": "Vocational Skills"},
@@ -101,6 +119,15 @@ def check_government_schemes(cgpa: float, stream: str, skills: list[str]) -> str
 
 @tool(name="get_tenali_puzzle", description="Retrieve a folklore-themed Samacheer logic puzzle for the given topic.")
 def get_tenali_puzzle(topic: str) -> str:
+    """
+    Get a Tenali Raman style puzzle based on topic.
+
+    Args:
+        topic: The topic of the puzzle ("Math", "Logic").
+
+    Returns:
+        A puzzle string.
+    """
     puzzles = {
         "Math": "Tenali Raman has 5 mangoes. He gives 2 to the King but the King doubles what is left. How many mangoes now?",
         "Logic": "If a cat in Madurai has 3 kittens, and each kitten has 2 spots, how many spots in total in the village?"

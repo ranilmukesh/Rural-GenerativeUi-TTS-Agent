@@ -12,6 +12,26 @@ export default function AssessmentForm({ onSubmit, isLoading }) {
   const [resumeText, setResumeText] = useState('');
   const skillsWrapperRef = useRef(null);
 
+  const [formData, setFormData] = useState({
+    gender: '',
+    age: '',
+    stream: '',
+    desired_role: '',
+    hostel: false,
+    backlogs: false,
+    internships: '',
+    cgpa: ''
+  });
+
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
+  };
+
+
   useEffect(() => {
     apiOptions().then(data => {
       setStreams(data.streams || []);
@@ -99,19 +119,28 @@ export default function AssessmentForm({ onSubmit, isLoading }) {
 
   function fillDemo(e) {
     e.preventDefault();
-    // Demo fill via direct DOM
-    document.getElementById('f-gender').value = 'Female';
-    document.getElementById('f-age').value = '21';
-    document.getElementById('f-internships').value = '1';
-    document.getElementById('f-cgpa').value = '7.5';
-    document.getElementById('f-hostel').checked = true;
-    document.getElementById('f-backlogs').checked = true;
+
+    let demoStream = '';
     if (streams.includes('Information Technology')) {
-      document.getElementById('f-stream').value = 'Information Technology';
+      demoStream = 'Information Technology';
     }
-    setSelectedSkills(['Python', 'SQL', 'Git']);
+
+    let demoRole = '';
     const role = jobs.find(j => j === 'Data Analyst');
-    if (role) document.getElementById('f-desired_role').value = role;
+    if (role) demoRole = role;
+
+    setFormData({
+      gender: 'Female',
+      age: '21',
+      internships: '1',
+      cgpa: '7.5',
+      hostel: true,
+      backlogs: true,
+      stream: demoStream,
+      desired_role: demoRole
+    });
+
+    setSelectedSkills(['Python', 'SQL', 'Git']);
   }
 
   const selectArrow = (
@@ -136,7 +165,7 @@ export default function AssessmentForm({ onSubmit, isLoading }) {
             <div className="input-group">
               <label className="input-label">Gender</label>
               <div className="select-wrapper">
-                <select id="f-gender" name="gender" required>
+                <select id="f-gender" name="gender" value={formData.gender} onChange={handleChange} required>
                   <option value="">Select gender</option>
                   <option value="Male">Male</option>
                   <option value="Female">Female</option>
@@ -146,7 +175,7 @@ export default function AssessmentForm({ onSubmit, isLoading }) {
             </div>
             <div className="input-group">
               <label className="input-label">Age (years)</label>
-              <input type="number" id="f-age" name="age" placeholder="e.g., 21" min="15" max="50" required />
+              <input type="number" id="f-age" name="age" value={formData.age} onChange={handleChange} placeholder="e.g., 21" min="15" max="50" required />
               <span className="input-hint">15-50 years</span>
             </div>
           </div>
@@ -155,7 +184,7 @@ export default function AssessmentForm({ onSubmit, isLoading }) {
             <div className="input-group">
               <label className="input-label">Stream</label>
               <div className="select-wrapper">
-                <select id="f-stream" name="stream" required>
+                <select id="f-stream" name="stream" value={formData.stream} onChange={handleChange} required>
                   <option value="">Select stream</option>
                   {streams.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
@@ -212,7 +241,7 @@ export default function AssessmentForm({ onSubmit, isLoading }) {
             <div className="input-group">
               <label className="input-label">Desired Role (Dream Job)</label>
               <div className="select-wrapper">
-                <select id="f-desired_role" name="desired_role">
+                <select id="f-desired_role" name="desired_role" value={formData.desired_role} onChange={handleChange}>
                   <option value="">Select Target Job Role</option>
                   {jobs.map(j => <option key={j} value={j}>{j}</option>)}
                 </select>
@@ -239,7 +268,7 @@ export default function AssessmentForm({ onSubmit, isLoading }) {
             <div className="input-group">
               <label className="input-label">Hostel</label>
               <div className="checkbox-card">
-                <input type="checkbox" id="f-hostel" name="hostel" />
+                <input type="checkbox" id="f-hostel" name="hostel" checked={formData.hostel} onChange={handleChange} />
                 <label htmlFor="f-hostel" className="checkbox-label">
                   <span className="checkbox-box">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M5 13l4 4L19 7" /></svg>
@@ -254,7 +283,7 @@ export default function AssessmentForm({ onSubmit, isLoading }) {
             <div className="input-group">
               <label className="input-label">History of Backlogs</label>
               <div className="checkbox-card">
-                <input type="checkbox" id="f-backlogs" name="backlogs" />
+                <input type="checkbox" id="f-backlogs" name="backlogs" checked={formData.backlogs} onChange={handleChange} />
                 <label htmlFor="f-backlogs" className="checkbox-label">
                   <span className="checkbox-box">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M5 13l4 4L19 7" /></svg>
@@ -276,7 +305,7 @@ export default function AssessmentForm({ onSubmit, isLoading }) {
             <div className="input-group">
               <label className="input-label">Internships</label>
               <div className="input-with-unit">
-                <input type="number" id="f-internships" name="internships" placeholder="e.g., 2" step="1" min="0" required />
+                <input type="number" id="f-internships" name="internships" value={formData.internships} onChange={handleChange} placeholder="e.g., 2" step="1" min="0" required />
                 <span className="input-unit">count</span>
               </div>
               <span className="input-hint">Number of internships completed</span>
@@ -284,7 +313,7 @@ export default function AssessmentForm({ onSubmit, isLoading }) {
             <div className="input-group">
               <label className="input-label">CGPA</label>
               <div className="input-with-unit">
-                <input type="number" id="f-cgpa" name="cgpa" placeholder="e.g., 8.5" step="0.01" min="0" max="10" required />
+                <input type="number" id="f-cgpa" name="cgpa" value={formData.cgpa} onChange={handleChange} placeholder="e.g., 8.5" step="0.01" min="0" max="10" required />
                 <span className="input-unit">/10</span>
               </div>
               <span className="input-hint">Cumulative Grade Point Average</span>

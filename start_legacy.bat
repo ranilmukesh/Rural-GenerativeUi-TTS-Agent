@@ -56,12 +56,12 @@ echo [2/6] No model artifacts found. Training required...
 :DO_TRAIN
 :: Set Nvidia API Key first (needed before training)
 echo [3/6] Setting up AI Chat credentials...
-setx NVIDIA_API_KEY "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" >nul 2>&1
-set NVIDIA_API_KEY=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
-setx SARVAM_API_KEY "sk_uzv5f6nd_5Zmr6AmTRsOyzQTFlaQebqZd" >nul 2>&1
-set SARVAM_API_KEY=sk_uzv5f6nd_5Zmr6AmTRsOyzQTFlaQebqZd
-echo NVIDIA_API_KEY=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> .env
-echo SARVAM_API_KEY=sk_uzv5f6nd_5Zmr6AmTRsOyzQTFlaQebqZd>> .env
+
+
+
+
+
+
 echo       API Keys configured!
 echo.
 
@@ -82,12 +82,12 @@ goto :START_SERVERS
 :SKIP_TRAIN
 :: Set Nvidia API Key
 echo [3/6] Setting up AI Chat credentials...
-setx NVIDIA_API_KEY "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" >nul 2>&1
-set NVIDIA_API_KEY=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
-setx SARVAM_API_KEY "sk_uzv5f6nd_5Zmr6AmTRsOyzQTFlaQebqZd" >nul 2>&1
-set SARVAM_API_KEY=sk_uzv5f6nd_5Zmr6AmTRsOyzQTFlaQebqZd
-echo NVIDIA_API_KEY=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> .env
-echo SARVAM_API_KEY=sk_uzv5f6nd_5Zmr6AmTRsOyzQTFlaQebqZd>> .env
+
+
+
+
+
+
 echo       API Keys configured!
 echo.
 echo [4/6] Skipped training (using cached model).
@@ -95,7 +95,7 @@ echo.
 
 :START_SERVERS
 echo [5/6] Starting API Server on http://127.0.0.1:8000 ...
-start "PlacementPredictor+ API" cmd /k "title PlacementPredictor+ API Server && color 0B && set NVIDIA_API_KEY=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 && set SARVAM_API_KEY=sk_uzv5f6nd_5Zmr6AmTRsOyzQTFlaQebqZd && python -m uvicorn main:app --host 127.0.0.1 --port 8000"
+start "PlacementPredictor+ API" cmd /k "title PlacementPredictor+ API Server && color 0B && python -m uvicorn main:app --host 127.0.0.1 --port 8000 --workers 4"
 echo       Waiting for API to start...
 timeout /t 30 /nobreak >nul
 
@@ -119,7 +119,7 @@ if errorlevel 1 (
     echo       Retrained successfully!
     echo.
     echo [5/6] Restarting API Server...
-    start "PlacementPredictor+ API" cmd /k "title PlacementPredictor+ API Server && color 0B && set NVIDIA_API_KEY=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 && python -m uvicorn main:app --host 127.0.0.1 --port 8000"
+    start "PlacementPredictor+ API" cmd /k "title PlacementPredictor+ API Server && color 0B && python -m uvicorn main:app --host 127.0.0.1 --port 8000 --workers 4"
     timeout /t 80 /nobreak >nul
 )
 echo       API Server started!
