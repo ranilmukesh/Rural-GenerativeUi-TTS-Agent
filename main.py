@@ -738,6 +738,18 @@ try:
             config=_os_config, # enables Evals tab
         )
         app = agent_os.get_app()
+        # Re-apply CORS on the outer AgentOS app.
+        # AgentOS.get_app() returns a new ASGI wrapper; our original CORSMiddleware
+        # only covers the inner FastAPI app. Adding it here makes it the outermost
+        # layer so all routes — including AgentOS's /health, /sessions, etc. — get
+        # the correct Access-Control-Allow-Origin headers.
+        from fastapi.middleware.cors import CORSMiddleware as _CORS
+        app.add_middleware(
+            _CORS,
+            allow_origins=["*"],
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
         logger.info("[OK] AgentOS wrapper applied — os.agno.com endpoints + tracing + evals active")
 except ImportError as _aos_imp_err:
     logger.warning(f"[!] agno.os not available — AgentOS features disabled: {_aos_imp_err}")

@@ -241,7 +241,7 @@ function setupEventListeners() {
  */
 async function checkAPIHealth() {
     try {
-        const response = await fetch(`${API_BASE_URL}/health`);
+        const response = await fetch(`${API_BASE_URL}/api/health`);
         const data = await response.json();
 
         if (!data.model_loaded) {

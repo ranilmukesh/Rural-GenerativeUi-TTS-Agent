@@ -119,9 +119,10 @@ paati_agent = Agent(
     enable_agentic_memory=True,
     num_history_runs=50,
     add_session_summary_to_context=True,
-    stream=True,
+    # stream=True intentionally omitted: arun() with stream=True returns an async
+    # generator, not a RunResponse. Since the frontend waits for the full JSON
+    # response (no SSE), we use the default stream=False so arun() is awaitable.
     debug_mode=True,
-    # Gap 1 fix: wire in the prompt-injection guard
     pre_hooks=[PromptInjectionGuardrail()],
 )
 
