@@ -99,11 +99,12 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         return response
 
 try:
-    from llm import start_chat_session, get_chat_response
+    from llm import start_chat_session, get_chat_response, paati_agent
     CHAT_AVAILABLE = True
     logger.info("[OK] LLM Chat module loaded")
 except Exception as _llm_err:
     CHAT_AVAILABLE = False
+    paati_agent = None
     logger.warning(f"[!] LLM Chat unavailable: {_llm_err}")
 
 app = FastAPI(
@@ -536,7 +537,7 @@ async def chat_audio(session_id: str = Form(...), audio_file: UploadFile = File(
         if not transcript or transcript.strip() == "":
             return {"transcript": "(Inaudible)", "response": "Kanna, your voice broke! Ennaku kekala. Can you repeat?"}
 
-        resp = get_chat_response(session_id, transcript)
+        resp = await get_chat_response(session_id, transcript)
         audio_b64 = get_tts_base64(resp, speaker="priya") # Using a female voice for Paati
         
         prog = user_progress_db.get(session_id, {"points": 0, "level": "Seed (Vithu)", "kurals": 0})
@@ -583,9 +584,9 @@ async def chat_s(req: dict):
     explanation = req.get('explanation') or {}
     whatif = req.get('whatif') or {}
     
-    sid, greet = start_chat_session(student_data, prediction, explanation, whatif)
+    sid, greet = await start_chat_session(student_data, prediction, explanation, whatif)
     
-    # NEW: Generate TTS audio for the initial greeting
+    # Generate TTS audio for the initial greeting
     audio_b64 = get_tts_base64(greet, speaker="priya") 
     
     user_progress_db[sid] = {"points": 0, "level": "Seed (Vithu)", "kurals": 0}
@@ -593,7 +594,7 @@ async def chat_s(req: dict):
     return {
         "session_id": sid, 
         "message": greet,
-        "audio_base64": audio_b64  # Returning the audio payload
+        "audio_base64": audio_b64
     }
 
 @app.post("/chat/message")
@@ -602,7 +603,7 @@ async def chat_m(req: dict):
         raise HTTPException(status_code=503)
         
     sid = req.get('session_id')
-    resp = get_chat_response(sid, req.get('message'))
+    resp = await get_chat_response(sid, req.get('message'))
     audio_b64 = get_tts_base64(resp, speaker="priya") # Paati voice
     
     prog = user_progress_db.get(sid, {"points": 0, "level": "Seed (Vithu)", "kurals": 0})
@@ -654,8 +655,55 @@ async def read_index():
 async def favicon():
     return FileResponse("favicon.ico")
 
+
+# ---------------------------------------------------------------------------
+# AgentOS integration
+# Wraps the existing FastAPI app with AgentOS so that os.agno.com can
+# connect to this server and surface /agents, /sessions, /runs, /memories,
+# /knowledge, /metrics, /evals endpoints automatically.
+# All existing routes (/predict, /explain, /chat/*, static files, etc.) are
+# preserved unchanged via base_app.
+# ---------------------------------------------------------------------------
+try:
+    from agno.os import AgentOS
+    from agno.os.config import AgentOSConfig, EvalsConfig
+
+    _agents_list = [paati_agent] if paati_agent is not None else []
+    if _agents_list:
+        _os_config = AgentOSConfig(
+            available_models=[
+                "nvidia:nvidia/nemotron-3-super-120b-a12b",
+                "nvidia:meta/llama-3.3-70b-instruct",
+            ],
+            evals=EvalsConfig(
+                available_models=[
+                    "nvidia:nvidia/nemotron-3-super-120b-a12b",
+                    "nvidia:meta/llama-3.3-70b-instruct",
+                ]
+            ),
+        )
+        from llm import _chat_db as _paati_db
+        agent_os = AgentOS(
+            description="PlacementPredictor+ powered by Paati AI",
+            agents=_agents_list,
+            base_app=app,
+            db=_paati_db,      # surfaces sessions in os.agno.com session browser
+            tracing=True,      # enables trace viewer on os.agno.com
+            config=_os_config, # enables Evals tab
+        )
+        app = agent_os.get_app()
+        logger.info("[OK] AgentOS wrapper applied — os.agno.com endpoints + tracing + evals active")
+except ImportError as _aos_imp_err:
+    logger.warning(f"[!] agno.os not available — AgentOS features disabled: {_aos_imp_err}")
+except Exception as _aos_err:
+    logger.warning(f"[!] AgentOS unavailable (continuing without it): {_aos_err}")
+
+
 if __name__ == "__main__":
     import uvicorn
     # Important for HF: Host 0.0.0.0 and Port 7860
+    # workers=1: required while using SQLite for session state.
+    # FastAPI/uvicorn handles many concurrent async requests on a single worker fine.
+    # To scale beyond 1 worker, migrate SqliteDb -> PostgresDb (e.g. Neon cloud PG).
     port = int(os.environ.get("PORT", 7860))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, workers=4)
+    uvicorn.run("main:app", host="0.0.0.0", port=port, workers=1)

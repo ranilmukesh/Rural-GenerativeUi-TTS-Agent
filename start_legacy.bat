@@ -95,7 +95,7 @@ echo.
 
 :START_SERVERS
 echo [5/6] Starting API Server on http://127.0.0.1:8000 ...
-start "PlacementPredictor+ API" cmd /k "title PlacementPredictor+ API Server && color 0B && python -m uvicorn main:app --host 127.0.0.1 --port 8000 --workers 4"
+start "PlacementPredictor+ API" cmd /k "title PlacementPredictor+ API Server && color 0B && python -m uvicorn main:app --host 127.0.0.1 --port 8000 --workers 1"
 echo       Waiting for API to start...
 timeout /t 30 /nobreak >nul
 
@@ -119,7 +119,7 @@ if errorlevel 1 (
     echo       Retrained successfully!
     echo.
     echo [5/6] Restarting API Server...
-    start "PlacementPredictor+ API" cmd /k "title PlacementPredictor+ API Server && color 0B && python -m uvicorn main:app --host 127.0.0.1 --port 8000 --workers 4"
+    start "PlacementPredictor+ API" cmd /k "title PlacementPredictor+ API Server && color 0B && python -m uvicorn main:app --host 127.0.0.1 --port 8000 --workers 1"
     timeout /t 80 /nobreak >nul
 )
 echo       API Server started!
