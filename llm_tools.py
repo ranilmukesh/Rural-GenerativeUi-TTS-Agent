@@ -1,6 +1,6 @@
 import json
-from typing import Literal, Optional, List
-from pydantic import BaseModel, Field
+from typing import Literal, Optional, List, Union
+from pydantic import BaseModel, Field, field_validator
 from agno.agent import Agent
 from agno.models.nvidia import Nvidia
 from agno.tools import tool
@@ -8,16 +8,25 @@ from agno.tools import tool
 class GameStep(BaseModel):
     step_type: Literal["dialogue", "choice", "sequence", "code_debug"]
     paati_says: str = Field(description="Tanglish narration from Paati")
-    visual: str = Field(description="Emoji/scene like '🥭🥭🥭👑'")
+    # optional with default so LLM omitting the field doesn't break validation
+    visual: str = Field(default="🎯", description="Emoji/scene like '🥭🥭🥭👑'")
     question: Optional[str] = None
     options: Optional[List[str]] = None
+    # Validator below coerces list -> str so LLM returning ["a","b"] doesn't break parsing
     correct_answer: Optional[str] = None
     sequence_items: Optional[List[str]] = Field(default=None, description="List of items in randomized order to be sorted")
     correct_sequence: Optional[List[str]] = Field(default=None, description="The correct ordered list of sequence_items")
-    # NEW: Code debug fields
     code_snippet: Optional[str] = Field(default=None, description="Code snippet containing a bug. Number the lines starting at 1.")
     bug_line: Optional[int] = Field(default=None, description="The exact integer line number where the bug is.")
     points_on_success: int = 10
+
+    @field_validator("correct_answer", mode="before")
+    @classmethod
+    def coerce_list_to_str(cls, v):
+        """LLM sometimes returns a list for correct_answer on sequence steps. Join it."""
+        if isinstance(v, list):
+            return ", ".join(str(x) for x in v)
+        return v
 
 class MiniGame(BaseModel):
     title: str = Field(description="e.g. 'Tenali's Mango Market Simulator'")
@@ -31,6 +40,7 @@ game_agent = Agent(
     max_tokens=16384,
     temperature=0.2),
     output_schema=MiniGame,
+    debug_mode=True,
     use_json_mode=True,
     description="You design tiny gamified JSON lessons for rural Tamil students using Tenali Raman folklore.",
     instructions=[
@@ -63,14 +73,15 @@ def generate_mini_game(concept: str, level: str) -> str:
   "concept_taught": "{concept}",
   "level": "{level}",
   "steps": [
-    {{"step_type":"dialogue","paati_says":"Vaa kanna...","visual":"🥭","points_on_success":0}},
-    {{"step_type":"code_debug","paati_says":"Find the bug in this Python code!","visual":"🐞","code_snippet":"1. def add(a, b):\\n2.   return a - b\\n3. print(add(2,2))","bug_line":2,"points_on_success":20}},
-    {{"step_type":"dialogue","paati_says":"Romba nalla!","visual":"🏆","points_on_success":0}}
+    {{"step_type":"dialogue","paati_says":"Vaa kanna, innikku naama {concept} padikkalaam!","visual":"🥭","points_on_success":0}},
+    {{"step_type":"choice","paati_says":"Enna aachu?","visual":"🤔","question":"Which SQL JOIN returns all rows from left table?","options":["INNER JOIN","LEFT JOIN","RIGHT JOIN"],"correct_answer":"LEFT JOIN","points_on_success":20}},
+    {{"step_type":"sequence","paati_says":"Sari varisaiyil vayyu!","visual":"📋","question":"Put the SQL clauses in order:","sequence_items":["WHERE","SELECT","FROM"],"correct_sequence":["SELECT","FROM","WHERE"],"correct_answer":"SELECT, FROM, WHERE","points_on_success":20}},
+    {{"step_type":"dialogue","paati_says":"Romba nalla pannite kanna!","visual":"🏆","points_on_success":0}}
   ],
   "final_reward_badge": "Logic Master"
 }}
 
-Now output the real game JSON only."""
+Now output the real game JSON for '{concept}' at level '{level}'. Every step MUST have a 'visual' emoji field."""
 
     for attempt in range(2):
         suffix = "" if attempt == 0 else " Be extra careful: include ALL required fields and follow the schema exactly."
