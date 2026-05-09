@@ -117,7 +117,7 @@ paati_agent = Agent(
     tool_call_limit=5,
     markdown=True,
     enable_agentic_memory=True,
-    num_history_runs=50,
+    num_history_runs=10,   # 50 blew the 64k context limit; 10 = ~20 msgs of history
     add_session_summary_to_context=True,
     # stream=True intentionally omitted: arun() with stream=True returns an async
     # generator, not a RunResponse. Since the frontend waits for the full JSON
