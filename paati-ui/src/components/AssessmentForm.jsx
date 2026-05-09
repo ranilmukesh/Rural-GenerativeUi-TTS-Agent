@@ -92,17 +92,16 @@ export default function AssessmentForm({ onSubmit, isLoading }) {
 
   function handleSubmit(e) {
     e.preventDefault();
-    const fd = e.target;
     const data = {
-      Gender: fd.gender.value,
-      Age: parseInt(fd.age.value),
-      Stream: fd.stream.value,
-      Internships: parseInt(fd.internships.value) || 0,
-      CGPA: parseFloat(fd.cgpa.value) || 0,
-      Hostel: fd.hostel.checked ? 1 : 0,
-      HistoryOfBacklogs: fd.backlogs.checked ? 1 : 0,
+      Gender: formData.gender,
+      Age: parseInt(formData.age),
+      Stream: formData.stream,
+      Internships: parseInt(formData.internships) || 0,
+      CGPA: parseFloat(formData.cgpa) || 0,
+      Hostel: formData.hostel ? 1 : 0,
+      HistoryOfBacklogs: formData.backlogs ? 1 : 0,
       skills: selectedSkills,
-      desired_role: fd.desired_role.value || null,
+      desired_role: formData.desired_role || null,
       resume_text: resumeText,
     };
 

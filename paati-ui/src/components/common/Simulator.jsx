@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { apiPredict } from '../../api';
 
 export function Simulator({ formData, baselinePrediction }) {
@@ -7,18 +7,17 @@ export function Simulator({ formData, baselinePrediction }) {
   const [simCGPA, setSimCGPA] = useState(formData.CGPA);
   const [simBacklog, setSimBacklog] = useState(formData.HistoryOfBacklogs === 1);
   const [simResult, setSimResult] = useState(baselinePrediction);
-  const debounceRef = useRef(null);
 
   useEffect(() => {
-    clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       const data = { ...formData, Age: simAge, Internships: simIntern, CGPA: simCGPA, HistoryOfBacklogs: simBacklog ? 1 : 0 };
       try {
         const r = await apiPredict(data);
         setSimResult(r);
       } catch { }
     }, 300);
-  }, [simAge, simIntern, simCGPA, simBacklog]);
+    return () => clearTimeout(timer);
+  }, [simAge, simIntern, simCGPA, simBacklog, formData]);
 
   const risk = simResult?.probability_percentage ?? 0;
   const base = baselinePrediction?.probability_percentage ?? 0;

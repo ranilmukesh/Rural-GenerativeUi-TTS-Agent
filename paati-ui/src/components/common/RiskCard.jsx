@@ -9,25 +9,35 @@ export function RiskCard({ prediction }) {
     if (!prediction) return;
     const pct = prediction.probability_percentage;
 
-    // Custom animation function
+    let isMounted = true;
+    let rafId;
     let startTimestamp = null;
     const duration = 1500;
     const step = (timestamp) => {
+      if (!isMounted) return;
       if (!startTimestamp) startTimestamp = timestamp;
       const progress = Math.min((timestamp - startTimestamp) / duration, 1);
       setDisplayPct((progress * pct).toFixed(1));
       if (progress < 1) {
-        window.requestAnimationFrame(step);
+        rafId = window.requestAnimationFrame(step);
       }
     };
-    window.requestAnimationFrame(step);
+    rafId = window.requestAnimationFrame(step);
 
     const circ = 2 * Math.PI * 54;
     const offset = circ - (pct / 100) * circ;
-    setTimeout(() => {
-      if (ringRef.current) ringRef.current.style.strokeDashoffset = offset;
-      if (pointerRef.current) pointerRef.current.style.left = `${pct}%`;
+    const timer = setTimeout(() => {
+      if (isMounted) {
+        if (ringRef.current) ringRef.current.style.strokeDashoffset = offset;
+        if (pointerRef.current) pointerRef.current.style.left = `${pct}%`;
+      }
     }, 100);
+
+    return () => {
+      isMounted = false;
+      cancelAnimationFrame(rafId);
+      clearTimeout(timer);
+    };
   }, [prediction]);
 
   if (!prediction) return null;
