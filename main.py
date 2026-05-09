@@ -269,7 +269,7 @@ def prepare_input(data: StudentData) -> pd.DataFrame:
     # Extract columns naturally based on dict order which matches train features order
     return df
 
-@app.get("/health", response_model=HealthResponse)
+@app.get("/api/health", response_model=HealthResponse)
 async def health_check():
     return HealthResponse(status="healthy", model_loaded=model is not None)
 

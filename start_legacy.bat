@@ -101,7 +101,7 @@ timeout /t 30 /nobreak >nul
 
 :: Validate the model loaded correctly by hitting /health
 echo       Validating model artifacts...
-curl -s http://127.0.0.1:8000/health 2>nul | findstr /C:"model_loaded" | findstr /C:"true" >nul 2>&1
+curl -s http://127.0.0.1:8000/api/health 2>nul | findstr /C:"model_loaded" | findstr /C:"true" >nul 2>&1
 if errorlevel 1 (
     echo [!] Model failed to load - version mismatch or corrupted pkl.
     echo       Killing API server and retraining...
