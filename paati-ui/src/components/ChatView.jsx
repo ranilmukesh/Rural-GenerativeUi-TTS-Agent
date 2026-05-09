@@ -23,15 +23,22 @@ export default function ChatView({
   const msgsRef = useRef(null);
   const mrRef = useRef(null);
   const chunksRef = useRef([]);
+  // useRef guards — synchronous, immune to React 18 Strict Mode double-effect timing
+  const initDoneRef = useRef(false);   // prevents double apiChatStart (which resets messages)
+  const isSendingRef = useRef(false);  // prevents double sendMessage when Enter + button both fire
 
   // Auto-scroll
   useEffect(() => {
     if (msgsRef.current) msgsRef.current.scrollTop = msgsRef.current.scrollHeight;
   }, [messages, isTyping]);
 
-  // Init chat ONCE per session — guard with lifted `initialized` flag
+  // Init chat ONCE per session
+  // initDoneRef (not initialized prop) is the primary guard — refs survive the
+  // Strict Mode unmount-remount cycle synchronously, so the second effect run
+  // always sees initDoneRef.current === true and exits immediately.
   useEffect(() => {
-    if (initialized) return;          // already done — don't re-fire
+    if (initDoneRef.current || initialized) return;
+    initDoneRef.current = true;
     setInitialized(true);
     setIsTyping(true);
     onStatusChange?.('Connecting...');
@@ -48,11 +55,15 @@ export default function ChatView({
         onStatusChange?.('Offline');
       })
       .finally(() => setIsTyping(false));
-  }, []); // empty deps — runs only on first mount; guard handles re-mounts
+  }, []); // empty deps — initDoneRef is the reliable guard
 
   async function sendMessage(text) {
     const msg = (text || input).trim();
-    if (!msg || !sessionId) return;
+    // isSendingRef prevents double-fire: Enter keydown + button click can both
+    // fire in the same tick with the same stale `input` value before setInput('')
+    // applies, sending the same message twice to the LLM.
+    if (!msg || !sessionId || isSendingRef.current) return;
+    isSendingRef.current = true;
     setMessages(p => [...p, { type: 'user', text: msg }]);
     setInput('');
     setIsTyping(true);
@@ -66,7 +77,10 @@ export default function ChatView({
     } catch {
       setMessages(p => [...p, { type: 'system', text: '⚠️ Failed to get a response. Please try again.' }]);
       onStatusChange?.('Online');
-    } finally { setIsTyping(false); }
+    } finally {
+      setIsTyping(false);
+      isSendingRef.current = false;
+    }
   }
 
   async function startRecording(mode) {
@@ -286,14 +300,15 @@ export default function ChatView({
           {/* Send */}
           <button
             onClick={() => sendMessage()}
-            disabled={!input.trim() || !sessionId}
+            disabled={!input.trim() || !sessionId || isTyping}
             style={{
-              width: 44, height: 44, borderRadius: 14, border: 'none', cursor: input.trim() && sessionId ? 'pointer' : 'default',
-              background: input.trim() && sessionId ? '#6366f1' : 'rgba(226,232,240,0.6)',
-              color: input.trim() && sessionId ? 'white' : '#94a3b8',
+              width: 44, height: 44, borderRadius: 14, border: 'none',
+              cursor: input.trim() && sessionId && !isTyping ? 'pointer' : 'default',
+              background: input.trim() && sessionId && !isTyping ? '#6366f1' : 'rgba(226,232,240,0.6)',
+              color: input.trim() && sessionId && !isTyping ? 'white' : '#94a3b8',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               flexShrink: 0, marginLeft: 8,
-              boxShadow: input.trim() && sessionId ? '0 2px 8px rgba(99,102,241,0.3)' : 'none',
+              boxShadow: input.trim() && sessionId && !isTyping ? '0 2px 8px rgba(99,102,241,0.3)' : 'none',
               transition: 'all 0.2s',
             }}>
             <ArrowRight size={20} />

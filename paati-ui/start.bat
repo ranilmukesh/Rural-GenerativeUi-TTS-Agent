@@ -17,7 +17,7 @@ if exist "..\\.env" (
 
 REM --- Start FastAPI backend in a new window ---
 echo [1/2] Starting FastAPI backend on port 8000...
-start "Paati Backend" cmd /k "cd /d "%~dp0.." && python -m uvicorn main:app --host 127.0.0.1 --port 8000 --workers 4"
+start "Paati Backend" cmd /k "cd /d "%~dp0.." && python -m uvicorn main:app --host 127.0.0.1 --port 8000 --workers  1"
 
 REM --- Wait a moment for backend to init ---
 timeout /t 3 /nobreak >nul

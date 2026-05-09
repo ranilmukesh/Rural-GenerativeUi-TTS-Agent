@@ -764,4 +764,4 @@ if __name__ == "__main__":
     # FastAPI/uvicorn handles many concurrent async requests on a single worker fine.
     # To scale beyond 1 worker, migrate SqliteDb -> PostgresDb (e.g. Neon cloud PG).
     port = int(os.environ.get("PORT", 7860))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, workers=4)
+    uvicorn.run("main:app", host="0.0.0.0", port=port, workers=1)
