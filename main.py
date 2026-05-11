@@ -162,9 +162,20 @@ app = FastAPI(
 # Add logging middleware first
 app.add_middleware(LoggingMiddleware)
 
+# CORS origins: wildcard (*) is rejected by browsers when allow_credentials=True.
+# List every real origin that will talk to this API.
+_CORS_ORIGINS = [
+    "https://os.agno.com",        # AgentOS control plane
+    "http://127.0.0.1:3000",      # React dev server
+    "http://localhost:3000",       # React dev server (alias)
+    "http://127.0.0.1:5173",      # Vite dev server
+    "http://localhost:5173",       # Vite dev server (alias)
+    "http://127.0.0.1:8000",      # same-origin API calls
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -746,7 +757,8 @@ try:
         from fastapi.middleware.cors import CORSMiddleware as _CORS
         app.add_middleware(
             _CORS,
-            allow_origins=["*"],
+            allow_origins=_CORS_ORIGINS,  # reuse the same list defined above
+            allow_credentials=True,        # required for os.agno.com session cookies
             allow_methods=["*"],
             allow_headers=["*"],
         )
