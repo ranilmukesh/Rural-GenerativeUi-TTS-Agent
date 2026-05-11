@@ -31,6 +31,9 @@ export function animateCounter(setter, start, end, duration = 1500) {
 export function formatChatMarkdown(text) {
   if (!text) return '';
   return text
+    // Strip fenced json blocks — these are handled as structured UI (PuzzleCard / MiniGame)
+    .replace(/```json[\s\S]*?```/g, '')
+    .replace(/```[\s\S]*?```/g, '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
