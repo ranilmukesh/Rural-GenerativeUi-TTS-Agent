@@ -1,24 +1,7 @@
 import { Wrench, Sparkles, CheckCircle2, Circle, Check, ChevronDown, LayoutTemplate, FileText, MessageSquare } from 'lucide-react';
+import { Waveform } from './common';
 
 // Animated waveform bars
-function Waveform({ bars = 20, active = false, colorClass = '#818cf8' }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 2, height: 40 }}>
-      {Array.from({ length: bars }).map((_, i) => {
-        const h = active
-          ? Math.random() * 80 + 20
-          : 20 + Math.sin(i * 0.8) * 20 + Math.abs(Math.sin(i * 0.4)) * 40;
-        return (
-          <div key={i} style={{
-            width: 2, height: `${h}%`, borderRadius: 2,
-            background: colorClass, opacity: 0.6,
-            transition: active ? 'height 0.15s ease' : 'none',
-          }} />
-        );
-      })}
-    </div>
-  );
-}
 
 const thinkingSteps = [
   { label: 'Understanding the question', status: 'done' },

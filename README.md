@@ -1,54 +1,73 @@
+# 👵 Paati-Kural League (பாட்டி-குறள் லீக்)
+
+> **Karka Kasadara... Karpavai Katrapin Nitka Atharku Thaga.**
+> *"Learn flawlessly... and after learning, live by those values." — Thirukkural*
+
+![Paati-Kural League Poster](./paati%20poster.png)
+
+**Paati-Kural League** is a culturally-rooted, gamified AI learning ecosystem designed to bridge the gap for rural students. It combines state-of-the-art AI with the warmth of a grandmother's wisdom, using **Thirukkural ethics** and **Tenali Raman folklore** to teach modern employability skills (SQL, Logic, Career Planning).
+
 ---
-title: Paati-Kural League
-emoji: 👵
-colorFrom: orange
-colorTo: yellow
-sdk: docker
-pinned: false
-license: mit
-app_port: 7860
-short_description: AI placement prediction & career guidance for rural students.
+
+## 🎯 The Mission
+
+### ❗ The Problem
+- **Low Engagement:** High disengagement in rural digital learning.
+- **Cultural Gap:** Standard EdTech feels alien and corporate to village students.
+- **Guidance Deficit:** Lack of localized career coaching and placement mentorship.
+
+### ✅ Our Solution
+A voice-first, AI-powered "Paati" (Grandma) tutor that makes education **relatable, interactive, and rewarding**.
+- **Voice-First:** Uses Sarvam AI for rural Tamil/English interaction.
+- **Culture-Rooted:** Teaches through stories and ethical puzzles.
+- **Outcome-Driven:** Direct linkage between learning games and placement probability.
+
 ---
 
-# 👵 Paati-Kural League
+## 🚀 Core Innovations
 
-> **Padichu, Velai Paaru** — *Study, Get a Job*
+| Feature | Cultural Flavor | Technical Backbone |
+|---|---|---|
+| 👵 **Paati AI Tutor** | Endearing Tanglish persona | **NVIDIA Nemotron-3** + **Agno AgentOS** |
+| 🎙️ **Voice First** | "Our Language" (Rural Tamil) | **Sarvam AI** (ASR + TTS) |
+| 🎮 **Gamified League** | Seed → Sapling → Tree levels | **SQLite** persistent progress engine |
+| 🧩 **Tenali Puzzles** | Logic via folklore | Generative UI (React / PuzzleCards) |
+| 📈 **XGBoost Prediction** | "Jathagam" of your career | **XGBoost** + **SHAP** Explainability |
+| 🗺️ **Career Routing** | Skill-gap mapping | **NetworkX** Knowledge Graph |
 
-An AI-powered campus placement predictor and interactive career coach built for rural Indian students. Paati-Kural combines an XGBoost ML model, SHAP explainability, a knowledge-graph routing engine, a gamified chat assistant ("Paati AI"), and Sarvam-powered Tamil/English voice — all in a modern React UI.
+---
+
+## 🛠️ How It Works (Student Journey)
+
+1. **Interact:** Student sends a voice note or message (WhatsApp-first vision).
+2. **Paati Responds:** AI Paati replies with a Thirukkural, a story, or a concept explanation.
+3. **Learn & Engage:** Students attempt generative mini-games (SQL sorting, bug hunts).
+4. **Assessment:** The system predicts placement probability based on their current profile.
+5. **Get Rewarded:** Earn **Paati Points** and certificates to unlock real micro-job links.
+6. **Parent Updates:** Automated progress reports for the family.
+
+---
+
+## 📊 Impact Goals
+- **100,000+** Students Impacted
+- **90%+** Retention through gamified learning
+- **Future-Ready** skills for better employability
+- **Stronger, Smarter** rural communities
 
 ---
 
 ## Table of Contents
 
-1. [Features](#features)
-2. [Architecture](#architecture)
-3. [Project Structure](#project-structure)
-4. [Quick Start](#quick-start)
-   - [Backend (FastAPI)](#backend-fastapi)
-   - [Frontend (React + Vite)](#frontend-react--vite)
-5. [Environment Variables](#environment-variables)
-6. [API Reference](#api-reference)
-7. [Data Schemas](#data-schemas)
-8. [Training the Model](#training-the-model)
-9. [Docker & Deployment](#docker--deployment)
-10. [Tech Stack](#tech-stack)
-11. [License](#license)
-
----
-
-## Features
-
-| Feature | Description |
-|---|---|
-| 🎯 **XGBoost Prediction** | 98.9% accuracy placement probability from 7 features |
-| 🔍 **SHAP Explainability** | Top-5 factors explaining *why* you got that score |
-| 🔮 **What-If Simulator** | Interactive sliders to see how CGPA / internships change your odds |
-| 🗺️ **Knowledge Graph Routing** | NetworkX skill-gap map → recommended job + missing skills |
-| 👵 **Paati AI Chat** | NVIDIA LLM agent with persona, resume analysis, career advice |
-| 🎮 **Mini-Games Engine** | Generative quizzes, sequence puzzles, and code-debug games in chat |
-| 🎙️ **Voice (STT + TTS)** | Sarvam AI — Tamil/English dictation & full-duplex voice conversations |
-| 📄 **Resume Parser** | PDF/TXT upload → injected into Paati's context |
-| 🏆 **Gamification** | Paati Points, League Levels (Seed → Sapling → Tree), Kural tracking |
+1. [Architecture](#architecture)
+2. [Project Structure](#project-structure)
+3. [Quick Start](#quick-start)
+4. [Environment Variables](#environment-variables)
+5. [API Reference](#api-reference)
+6. [Data Schemas](#data-schemas)
+7. [Training the Model](#training-the-model)
+8. [Docker & Deployment](#docker--deployment)
+9. [Tech Stack](#tech-stack)
+10. [License](#license)
 
 ---
 
@@ -56,7 +75,7 @@ An AI-powered campus placement predictor and interactive career coach built for 
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    PAATI-KURAL LEAGUE                        │
+│                    PAATI-KURAL LEAGUE                       │
 ├───────────────────┬────────────────────┬────────────────────┤
 │  React UI         │  FastAPI Backend   │  External APIs     │
 │  (Vite, port 5173)│  (Python, port 7860│                    │
