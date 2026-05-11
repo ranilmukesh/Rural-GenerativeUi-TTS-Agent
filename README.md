@@ -3,7 +3,7 @@
 > **Karka Kasadara... Karpavai Katrapin Nitka Atharku Thaga.**
 > *"Learn flawlessly... and after learning, live by those values." — Thirukkural*
 
-![Paati-Kural League Poster](file:///d:/edu%20hack%202026%20-%20Copy/paati%20poster.png)
+![Paati-Kural League Poster](./paati%20poster.png)
 
 **Paati-Kural League** is a culturally-rooted, gamified AI learning ecosystem designed to bridge the gap for rural students. It combines state-of-the-art AI with the warmth of a grandmother's wisdom, using **Thirukkural ethics** and **Tenali Raman folklore** to teach modern employability skills (SQL, Logic, Career Planning).
 
